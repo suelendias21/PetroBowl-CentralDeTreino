@@ -20,9 +20,14 @@ st.set_page_config(page_title="PetroBowl Intelligence", page_icon="🧠", layout
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;} footer {visibility: hidden;}
-    .area-tag { text-align: center; color: #f39c12; font-size: 22px; font-weight: bold; margin-bottom: -10px; text-transform: uppercase; letter-spacing: 2px;}
-    .pergunta { font-size: 40px; text-align: center; margin: 20px 5%; padding: 40px; background-color: #1e1e2e; border-radius: 12px; border-left: 8px solid #f39c12; box-shadow: 2px 2px 15px rgba(0,0,0,0.4);}
-    .instrucao-blur { text-align: center; color: #888888; font-size: 14px; margin-top: 10px; font-style: italic; }
+
+    /* Fundo branco geral */
+    .stApp { background-color: #ffffff; color: #111111; }
+    [data-testid="stSidebar"] { background-color: #f5f5f5; }
+
+    .area-tag { text-align: center; color: #e67e22; font-size: 22px; font-weight: bold; margin-bottom: -10px; text-transform: uppercase; letter-spacing: 2px;}
+    .pergunta { font-size: 40px; text-align: center; color: #111111; margin: 20px 5%; padding: 40px; background-color: #ffffff; border-radius: 12px; border-left: 8px solid #e67e22; box-shadow: 2px 2px 15px rgba(0,0,0,0.1);}
+    .instrucao-blur { text-align: center; color: #666666; font-size: 14px; margin-top: 10px; font-style: italic; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -123,8 +128,8 @@ for k, v in defaults.items():
 # 4. TELA DE LOGIN / CADASTRO
 # ==========================================
 if not st.session_state.logado:
-    st.markdown("<h1 style='text-align:center; color:#f39c12;'>🧠 PetroBowl Intelligence</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center; color:#888;'>Faça login ou crie sua conta para salvar seu progresso</p>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center; color:#e67e22;'>🧠 PetroBowl Intelligence</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color:#555;'>Faça login ou crie sua conta para salvar seu progresso</p>", unsafe_allow_html=True)
     st.markdown("---")
 
     col_l, col_r = st.columns(2)
@@ -183,8 +188,8 @@ if not st.session_state.logado:
 col_titulo, col_logout = st.columns([5, 1])
 with col_titulo:
     st.markdown(
-        f"<h3 style='color:#f39c12; margin-bottom:0;'>🧠 PetroBowl Intelligence &nbsp;|&nbsp; "
-        f"<span style='color:#00fa9a;'>👤 {st.session_state.usuario_atual}</span></h3>",
+        f"<h3 style='color:#e67e22; margin-bottom:0;'>🧠 PetroBowl Intelligence &nbsp;|&nbsp; "
+        f"<span style='color:#27ae60;'>👤 {st.session_state.usuario_atual}</span></h3>",
         unsafe_allow_html=True
     )
 with col_logout:
@@ -412,9 +417,9 @@ with tab_jogo:
             st.components.v1.html(f"""
                 <style>
                   #resp {{
-                    font-size: 38px; color: #00fa9a; font-weight: bold; text-align: center;
-                    padding: 20px; border: 2px dashed #00fa9a; border-radius: 12px;
-                    background-color: rgba(0,250,154,0.05);
+                    font-size: 38px; color: #1a1a1a; font-weight: bold; text-align: center;
+                    padding: 20px; border: 2px dashed #e67e22; border-radius: 12px;
+                    background-color: #fff8f0;
                     filter: blur(15px); transition: filter 0.4s ease;
                     cursor: pointer; user-select: none;
                   }}

@@ -364,81 +364,111 @@ with tab_jogo:
             p   = st.session_state.pergunta_atual
             uid = p['uid']
 
-            st.markdown(f"""
-                <style>
-                .timer-bar-{uid} {{
-                    height: 12px; width: 100%; border-radius: 8px; margin: 5px 0 20px 0;
-                    animation: shrinkTimer 20s linear forwards;
-                }}
-                @keyframes shrinkTimer {{
-                    0%   {{ width: 100%; background-color: #00fa9a; }}
-                    33%  {{ width: 66%;  background-color: #f39c12; }}
-                    66%  {{ width: 33%;  background-color: #e74c3c; }}
-                    100% {{ width: 0%;   background-color: #e74c3c; }}
-                }}
-                @keyframes countdown-{uid} {{
-                    0%    {{ content: "⏱️ 20s"; color: #00fa9a; }}
-                    5%    {{ content: "⏱️ 19s"; color: #00fa9a; }}
-                    10%   {{ content: "⏱️ 18s"; color: #00fa9a; }}
-                    15%   {{ content: "⏱️ 17s"; color: #00fa9a; }}
-                    20%   {{ content: "⏱️ 16s"; color: #00fa9a; }}
-                    25%   {{ content: "⏱️ 15s"; color: #00fa9a; }}
-                    30%   {{ content: "⏱️ 14s"; color: #00fa9a; }}
-                    35%   {{ content: "⏱️ 13s"; color: #f39c12; }}
-                    40%   {{ content: "⏱️ 12s"; color: #f39c12; }}
-                    45%   {{ content: "⏱️ 11s"; color: #f39c12; }}
-                    50%   {{ content: "⏱️ 10s"; color: #f39c12; }}
-                    55%   {{ content: "⏱️ 9s";  color: #f39c12; }}
-                    60%   {{ content: "⏱️ 8s";  color: #f39c12; }}
-                    65%   {{ content: "⏱️ 7s";  color: #f39c12; }}
-                    70%   {{ content: "⏱️ 6s";  color: #e74c3c; }}
-                    75%   {{ content: "⏱️ 5s";  color: #e74c3c; }}
-                    80%   {{ content: "⏱️ 4s";  color: #e74c3c; }}
-                    85%   {{ content: "⏱️ 3s";  color: #e74c3c; }}
-                    90%   {{ content: "⏱️ 2s";  color: #e74c3c; }}
-                    95%   {{ content: "⏱️ 1s";  color: #e74c3c; }}
-                    99.9% {{ content: "⏱️ 0s";  color: #e74c3c; }}
-                    100%  {{ content: "⏱️ Tempo Esgotado!"; color: #e74c3c; }}
-                }}
-                .timer-text-{uid}::after {{
-                    content: "⏱️ 20s";
-                    animation: countdown-{uid} 20s forwards;
-                    font-size: 45px; font-weight: bold;
-                    display: block; text-align: center; margin-top: 15px;
-                }}
-                </style>
-            """, unsafe_allow_html=True)
-
             st.markdown(f"<div class='area-tag'>📍 ÁREA: {p['area']}</div>", unsafe_allow_html=True)
             st.markdown(f"<div class='pergunta'>{str(p['pergunta'])}</div>", unsafe_allow_html=True)
-            st.markdown(f"<div class='timer-text-{uid}'></div>", unsafe_allow_html=True)
-            st.markdown(f"<div class='timer-bar-{uid}'></div>",  unsafe_allow_html=True)
 
             st.components.v1.html(f"""
                 <style>
+                  * {{ box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }}
+
+                  #timer-display {{
+                    font-size: 48px; font-weight: bold; text-align: center;
+                    margin-bottom: 8px; color: #27ae60;
+                  }}
+                  #timer-bar-wrap {{
+                    width: 100%; background: #e0e0e0;
+                    border-radius: 8px; height: 14px; margin-bottom: 16px; overflow: hidden;
+                  }}
+                  #timer-bar {{
+                    height: 14px; border-radius: 8px;
+                    width: 100%; background-color: #27ae60;
+                    transition: width 1s linear, background-color 0.5s;
+                  }}
                   #resp {{
-                    font-size: 38px; color: #1a1a1a; font-weight: bold; text-align: center;
+                    font-size: 36px; color: #1a1a1a; font-weight: bold; text-align: center;
                     padding: 20px; border: 2px dashed #e67e22; border-radius: 12px;
                     background-color: #fff8f0;
                     filter: blur(15px); transition: filter 0.4s ease;
                     cursor: pointer; user-select: none;
+                    margin-bottom: 12px;
                   }}
+                  #instrucao {{
+                    text-align: center; color: #888; font-size: 13px; font-style: italic;
+                    margin-bottom: 14px;
+                  }}
+                  #btn-pause {{
+                    display: block; margin: 0 auto;
+                    padding: 10px 36px; font-size: 16px; font-weight: bold;
+                    background-color: #e67e22; color: white;
+                    border: none; border-radius: 8px; cursor: pointer;
+                  }}
+                  #btn-pause:hover {{ background-color: #cf6d17; }}
                 </style>
-                <div id="resp">{str(p['resposta'])}</div>
-                <script>
-                  var el = document.getElementById('resp');
-                  var revealed = false;
-                  el.addEventListener('mouseover', function() {{ if (!revealed) el.style.filter = 'blur(0px)'; }});
-                  el.addEventListener('mouseout',  function() {{ if (!revealed) el.style.filter = 'blur(15px)'; }});
-                  setTimeout(function() {{
-                    revealed = true;
-                    el.style.filter = 'blur(0px)';
-                    el.style.cursor = 'default';
-                  }}, 15000);
-                </script>
-            """, height=120)
 
-            st.markdown("<div class='instrucao-blur'>A resposta será revelada automaticamente nos últimos 5 segundos (ou passe o mouse para ler agora) 🖱️</div>", unsafe_allow_html=True)
+                <div id="timer-display">⏱️ 25s</div>
+                <div id="timer-bar-wrap"><div id="timer-bar"></div></div>
+                <div id="resp">{str(p['resposta'])}</div>
+                <div id="instrucao">A resposta será revelada automaticamente nos últimos 5 segundos (ou passe o mouse para ler agora) 🖱️</div>
+                <button id="btn-pause">⏸️ Pausar</button>
+
+                <script>
+                  var TOTAL    = 25;
+                  var REVEAL_AT = 5;
+                  var remaining = TOTAL;
+                  var paused    = false;
+                  var revealed  = false;
+
+                  var display  = document.getElementById('timer-display');
+                  var bar      = document.getElementById('timer-bar');
+                  var resp     = document.getElementById('resp');
+                  var btnPause = document.getElementById('btn-pause');
+
+                  // Hover revela enquanto não foi revelado automaticamente
+                  resp.addEventListener('mouseover', function() {{ if (!revealed) resp.style.filter = 'blur(0px)'; }});
+                  resp.addEventListener('mouseout',  function() {{ if (!revealed) resp.style.filter = 'blur(15px)'; }});
+
+                  function getColor(rem) {{
+                    if (rem > 12) return '#27ae60';
+                    if (rem > 5)  return '#e67e22';
+                    return '#e74c3c';
+                  }}
+
+                  function tick() {{
+                    if (paused) return;
+                    if (remaining <= 0) {{
+                      display.textContent = '⏱️ Tempo Esgotado!';
+                      display.style.color = '#e74c3c';
+                      bar.style.width = '0%';
+                      reveal();
+                      return;
+                    }}
+                    var color = getColor(remaining);
+                    display.textContent = '⏱️ ' + remaining + 's';
+                    display.style.color = color;
+                    bar.style.width = (remaining / TOTAL * 100) + '%';
+                    bar.style.backgroundColor = color;
+
+                    if (remaining <= REVEAL_AT) reveal();
+                    remaining--;
+                    setTimeout(tick, 1000);
+                  }}
+
+                  function reveal() {{
+                    if (revealed) return;
+                    revealed = true;
+                    resp.style.filter = 'blur(0px)';
+                    resp.style.cursor = 'default';
+                  }}
+
+                  btnPause.addEventListener('click', function() {{
+                    paused = !paused;
+                    btnPause.textContent = paused ? '▶️ Continuar' : '⏸️ Pausar';
+                    if (!paused) tick();
+                  }});
+
+                  tick();
+                </script>
+            """, height=280)
             st.write("")
 
             col_acerto, col_erro = st.columns(2)

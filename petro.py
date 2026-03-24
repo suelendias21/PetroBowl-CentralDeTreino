@@ -391,6 +391,9 @@ with tab_jogo:
                     filter: blur(15px); transition: filter 0.4s ease;
                     cursor: pointer; user-select: none;
                     margin-bottom: 12px;
+                    word-wrap: break-word;
+                    word-break: break-word;
+                    white-space: normal;
                   }}
                   #instrucao {{
                     text-align: center; color: #888; font-size: 13px; font-style: italic;
@@ -401,6 +404,7 @@ with tab_jogo:
                     padding: 10px 36px; font-size: 16px; font-weight: bold;
                     background-color: #e67e22; color: white;
                     border: none; border-radius: 8px; cursor: pointer;
+                    flex-shrink: 0;
                   }}
                   #btn-pause:hover {{ background-color: #cf6d17; }}
                 </style>
@@ -467,8 +471,18 @@ with tab_jogo:
                   }});
 
                   tick();
+
+                  // Ajusta altura do iframe dinamicamente
+                  function resizeIframe() {{
+                    var h = document.body.scrollHeight + 20;
+                    window.parent.document.querySelectorAll('iframe').forEach(function(f) {{
+                      if (f.contentWindow === window) f.style.height = h + 'px';
+                    }});
+                  }}
+                  window.addEventListener('load', resizeIframe);
+                  new MutationObserver(resizeIframe).observe(document.body, {{childList:true, subtree:true, characterData:true}});
                 </script>
-            """, height=280)
+            """, height=380)
             st.write("")
 
             col_acerto, col_erro = st.columns(2)

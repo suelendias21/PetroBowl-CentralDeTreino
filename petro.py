@@ -94,6 +94,79 @@ def registrar_sessao(usuario, estatisticas_sessao, erros_sessao, session_id, num
         db[usuario] = dados
 
 # ==========================================
+# FUNÇÃO PARA RENDERIZAR TABELA HTML COM ÁUDIO
+# ==========================================
+def render_tabela_erros_html(erros_list, height=420):
+    if not erros_list:
+        return
+    rows = ""
+    for err in erros_list:
+        sess = err.get('Sessão', '?')
+        num = err.get('Nº', '-')
+        hora = err.get('Hora', '-')
+        area = err.get('Área', '-')
+        perg = str(err.get('Pergunta', '-'))
+        resp = str(err.get('Resposta', '-'))
+        
+        # Escapar caracteres para o JavaScript
+        perg_js = perg.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'").replace('\n', ' ')
+        
+        rows += f"""
+        <tr>
+            <td>#{sess}</td>
+            <td>{num}</td>
+            <td>{hora}</td>
+            <td>{area}</td>
+            <td>{perg}</td>
+            <td>{resp}</td>
+            <td style="text-align: center;">
+                <button class="btn-play" onclick="speak('{perg_js}')" title="Ouvir Pergunta">▶️</button>
+            </td>
+        </tr>
+        """
+        
+    html_code = f"""
+    <style>
+        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; color: #333; }}
+        .table-container {{ width: 100%; height: {height-20}px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 14px; background-color: #fff; }}
+        th, td {{ padding: 12px 10px; text-align: left; border-bottom: 1px solid #f0f0f0; }}
+        th {{ background-color: #f8f9fa; font-weight: 600; color: #2c3e50; position: sticky; top: 0; z-index: 1; border-bottom: 2px solid #e67e22; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1); }}
+        tr:hover {{ background-color: #fafafa; }}
+        .btn-play {{ background-color: #e67e22; color: white; border: none; border-radius: 5px; padding: 6px 12px; cursor: pointer; font-size: 14px; transition: 0.2s; }}
+        .btn-play:hover {{ background-color: #cf6d17; transform: scale(1.05); }}
+    </style>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th width="8%">Sess.</th>
+                    <th width="8%">Nº</th>
+                    <th width="10%">Hora</th>
+                    <th width="15%">Área</th>
+                    <th width="35%">Pergunta</th>
+                    <th width="16%">Resposta</th>
+                    <th width="8%" style="text-align: center;">Ouvir</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows}
+            </tbody>
+        </table>
+    </div>
+    <script>
+        function speak(text) {{
+            window.speechSynthesis.cancel();
+            var msg = new SpeechSynthesisUtterance(text);
+            msg.lang = 'en-US';
+            msg.rate = 0.85;
+            window.speechSynthesis.speak(msg);
+        }}
+    </script>
+    """
+    components.html(html_code, height=height)
+
+# ==========================================
 # 3. SESSION STATE INICIAL
 # ==========================================
 defaults = {
@@ -107,25 +180,11 @@ defaults = {
     'fila_areas': [],
     'indice_area': 0,
     'session_id': None,
-    'aguardando_navegacao': False,
-    'texto_para_narrar': None
+    'aguardando_navegacao': False
 }
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
-
-def componente_narrador(texto):
-    if texto:
-        pergunta_limpa = str(texto).replace('"', '\\"').replace('\n', ' ')
-        components.html(f"""
-            <script>
-                window.speechSynthesis.cancel();
-                var msg = new SpeechSynthesisUtterance("{pergunta_limpa}");
-                msg.lang = 'en-US'; msg.rate = 0.85;
-                window.speechSynthesis.speak(msg);
-            </script>
-        """, height=0)
-        st.session_state.texto_para_narrar = None
 
 # ==========================================
 # 4. LOGIN / CADASTRO
@@ -162,22 +221,14 @@ if not st.session_state.logado:
     st.stop()
 
 # ==========================================
-# 5. HEADER E NAVEGAÇÃO PERSISTENTE
+# 5. HEADER
 # ==========================================
-st.sidebar.markdown(f"### 👤 {st.session_state.usuario_atual}")
-st.sidebar.markdown(f"**Sessão Ativa: #{st.session_state.numero_sessao}**")
-
-menu = st.sidebar.radio(
-    "Navegação",
-    ["🎮 Arena de Simulação", "📊 Sessão Atual", "🏆 Histórico Total"]
-)
-
-if st.sidebar.button("🚪 Encerrar e Sair"):
+c_t, c_l = st.columns([5, 1])
+c_t.markdown(f"### 🧠 PetroBowl Intelligence | Sessão {st.session_state.numero_sessao} | <span style='color:#27ae60;'>👤 {st.session_state.usuario_atual}</span>", unsafe_allow_html=True)
+if c_l.button("🚪 Encerrar e Sair", use_container_width=True):
     registrar_sessao(st.session_state.usuario_atual, st.session_state.estatisticas, st.session_state.historico_erros, st.session_state.session_id, st.session_state.numero_sessao)
     st.session_state.logado = False
     st.rerun()
-
-componente_narrador(st.session_state.texto_para_narrar)
 
 # ==========================================
 # 6. LÓGICA DO JOGO
@@ -221,11 +272,17 @@ def processar_resposta(acertou):
     if acertou: st.session_state.estatisticas[area]['Acertos'] += 1
     else: 
         st.session_state.historico_erros.append({
+            "Sessão": st.session_state.numero_sessao,
             "Nº": p.get('num', '?'), "Hora": datetime.now().strftime("%H:%M"), 
             "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']
         })
     atualizar_stats_usuario(st.session_state.usuario_atual, {area: {'Tentativas': 1, 'Acertos': 1 if acertou else 0}}, [] if acertou else [{"Sessão": st.session_state.numero_sessao, "Nº": p.get('num', '?'), "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']}])
     st.session_state.aguardando_navegacao = True
+
+def finalizar_sessao_callback():
+    registrar_sessao(st.session_state.usuario_atual, st.session_state.estatisticas, st.session_state.historico_erros, st.session_state.session_id, st.session_state.numero_sessao)
+    st.session_state.logado = False
+    st.rerun()
 
 # ==========================================
 # 7. BARRA LATERAL (CONFIGS)
@@ -243,11 +300,12 @@ if arquivo:
         df_filtrado = df[df["Area"].isin(areas_selecionadas)]
 
 # ==========================================
-# 8. TELAS (ARENA / SESSÃO / HISTÓRICO)
+# 8. ABAS: ARENA / SESSÃO / HISTÓRICO
 # ==========================================
+tab_jogo, tab_sessao, tab_hist = st.tabs(["🎮 Arena de Simulação", "📊 Sessão Atual", "🏆 Histórico Total"])
 
 # --- ARENA ---
-if menu == "🎮 Arena de Simulação":
+with tab_jogo:
     if not df_filtrado.empty:
         fila, _ = montar_fila_ciclica(areas_selecionadas)
         idx_prox = st.session_state.indice_area % len(fila) if fila else 0
@@ -337,15 +395,12 @@ if menu == "🎮 Arena de Simulação":
                 with nav_c1:
                     st.button("⏭️ Próxima Pergunta", use_container_width=True, type="primary", on_click=sortear_pergunta_ciclica, args=(df_filtrado, areas_selecionadas))
                 with nav_c2:
-                    if st.button("⏹️ Encerrar Sessão", use_container_width=True):
-                        registrar_sessao(st.session_state.usuario_atual, st.session_state.estatisticas, st.session_state.historico_erros, st.session_state.session_id, st.session_state.numero_sessao)
-                        st.session_state.logado = False
-                        st.rerun()
+                    st.button("⏹️ Encerrar Sessão", use_container_width=True, on_click=finalizar_sessao_callback)
     else:
         st.info("👈 Selecione áreas na barra lateral para começar.")
 
 # --- SESSÃO ATUAL ---
-elif menu == "📊 Sessão Atual":
+with tab_sessao:
     st.header(f"📊 Desempenho da Sessão #{st.session_state.numero_sessao}")
     if st.session_state.estatisticas:
         df_s = pd.DataFrame.from_dict(st.session_state.estatisticas, orient='index')
@@ -358,30 +413,16 @@ elif menu == "📊 Sessão Atual":
         
         if st.session_state.historico_erros:
             st.subheader("📚 Revisão de Erros da Sessão")
-            h_col0, h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([0.5, 1, 2, 4, 3, 0.5])
-            h_col0.markdown("**Nº**")
-            h_col1.markdown("**Hora**")
-            h_col2.markdown("**Área**")
-            h_col3.markdown("**Pergunta**")
-            h_col4.markdown("**Resposta**")
-            h_col5.markdown("**🔊**")
-            st.markdown("---")
-
-            for idx, err in enumerate(st.session_state.historico_erros):
-                r_col0, r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([0.5, 1, 2, 4, 3, 0.5])
-                r_col0.write(err.get('Nº', '?'))
-                r_col1.write(err.get('Hora', '-'))
-                r_col2.write(err.get('Área', '-'))
-                r_col3.write(err.get('Pergunta', '-'))
-                r_col4.write(err.get('Resposta', '-'))
-                if r_col5.button("▶️", key=f"p_sess_{idx}"):
-                    st.session_state.texto_para_narrar = err.get('Pergunta', '')
-                    st.rerun()
+            # Renderiza a tabela HTML com JS embutido
+            render_tabela_erros_html(st.session_state.historico_erros, height=450)
+            
+            csv = pd.DataFrame(st.session_state.historico_erros).to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Baixar Erros (.CSV)", data=csv, file_name=f"erros_Sessao_{st.session_state.numero_sessao}.csv", mime="text/csv")
     else:
         st.info("Nenhuma pergunta respondida ainda.")
 
 # --- HISTÓRICO TOTAL ---
-elif menu == "🏆 Histórico Total":
+with tab_hist:
     st.header("🏆 Histórico Acumulado")
     dados_db = get_dados_usuario(st.session_state.usuario_atual)
     h_total = dados_db.get('historico_total', {})
@@ -394,24 +435,12 @@ elif menu == "🏆 Histórico Total":
         todos_erros = dados_db.get('erros_total', [])
         if todos_erros:
             st.subheader("📚 Banco de Erros Histórico")
-            th_col0, th_col1, th_col2, th_col3, th_col4, th_col5 = st.columns([0.5, 1, 2, 4, 3, 0.5])
-            th_col0.markdown("**Sess.**")
-            th_col1.markdown("**Nº**")
-            th_col2.markdown("**Área**")
-            th_col3.markdown("**Pergunta**")
-            th_col4.markdown("**Resposta**")
-            th_col5.markdown("**🔊**")
-            st.markdown("---")
+            
+            # Pegamos os últimos 40 erros para não gerar um HTML gigantesco
+            erros_recentes = list(reversed(todos_erros[-40:]))
+            render_tabela_erros_html(erros_recentes, height=500)
 
-            for idx, err in enumerate(reversed(todos_erros[-30:])):
-                tr_col0, tr_col1, tr_col2, tr_col3, tr_col4, tr_col5 = st.columns([0.5, 1, 2, 4, 3, 0.5])
-                tr_col0.write(f"#{err.get('Sessão', '?')}")
-                tr_col1.write(err.get('Nº', '-'))
-                tr_col2.write(err.get('Área', '-'))
-                tr_col3.write(err.get('Pergunta', '-'))
-                tr_col4.write(err.get('Resposta', '-'))
-                if tr_col5.button("▶️", key=f"p_hist_{idx}"):
-                    st.session_state.texto_para_narrar = err.get('Pergunta', '')
-                    st.rerun()
+            csv_t = pd.DataFrame(todos_erros).to_csv(index=False).encode('utf-8')
+            st.download_button("📊 Baixar Todos os Erros (.CSV)", data=csv_t, file_name=f"historico_erros_total.csv", mime="text/csv")
     else:
         st.info("Sem dados no histórico ainda.")

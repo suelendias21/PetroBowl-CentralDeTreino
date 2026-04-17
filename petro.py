@@ -295,7 +295,7 @@ with tab_jogo:
             c1.button("✅ Acertamos!", use_container_width=True, on_click=processar_resposta, args=(True, df_filtrado, areas_selecionadas))
             c2.button("❌ Erramos", use_container_width=True, on_click=processar_resposta, args=(False, df_filtrado, areas_selecionadas))
     else:
-        st.info("👈 Configure a planilha e as áreas na barra lateral para começar o treino.")
+        st.info("👈 Configure a planilha e as áreas na barra lateral para começar.")
 
 # --- ABA SESSÃO ATUAL ---
 with tab_sessao:
@@ -324,11 +324,11 @@ with tab_sessao:
             csv = df_err.to_csv(index=False).encode('utf-8')
             st.download_button("📥 Baixar Planilha de Erros (.CSV)", data=csv, file_name=f"erros_sessao_{st.session_state.usuario_atual}.csv", mime="text/csv")
     else:
-        st.info("Inicie o sorteio de perguntas para gerar estatísticas da sessão.")
+        st.info("Inicie o treino para gerar estatísticas.")
 
 # --- ABA HISTÓRICO TOTAL ---
 with tab_hist:
-    st.header("🏆 Seu Histórico Acumulado")
+    st.header("🏆 Histórico Acumulado")
     dados_db = get_dados_usuario(st.session_state.usuario_atual)
     h_total = dados_db.get('historico_total', {})
     
@@ -341,20 +341,18 @@ with tab_hist:
         th_taxa = round((th_acer / th_tent * 100), 1) if th_tent > 0 else 0
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total de Questões", th_tent, help="Soma de todas as suas sessões")
+        c1.metric("Total de Questões", th_tent)
         c2.metric("Total de Acertos", th_acer)
         c3.metric("Taxa Global", f"{th_taxa}%")
 
         st.subheader("📈 Performance por Matéria")
         st.dataframe(df_h.sort_values(by='Taxa de Acerto (%)'), use_container_width=True)
 
-        # Download do histórico completo
         csv_hist = df_h.reset_index().rename(columns={'index': 'Área'}).to_csv(index=False).encode('utf-8')
         st.download_button("📊 Baixar Histórico Completo (.CSV)", data=csv_hist, file_name=f"historico_total_{st.session_state.usuario_atual}.csv", mime="text/csv")
         
-        # Alerta de áreas críticas
         fracas = df_h[df_h['Taxa de Acerto (%)'] < 50].index.tolist()
         if fracas:
-            st.warning(f"⚠️ **Atenção Capitã:** O rendimento está abaixo de 50% em: {', '.join(fracas)}. Focar nesses tópicos!")
+            st.warning(f"⚠️ **Atenção:** O rendimento está abaixo de 50% em: {', '.join(fracas)}. Recomenda-se reforçar o estudo nestes tópicos.")
     else:
-        st.info("Ainda não há dados acumulados. Suas sessões serão salvas aqui automaticamente.")
+        st.info("Seu histórico aparecerá aqui conforme você realizar os treinos.")

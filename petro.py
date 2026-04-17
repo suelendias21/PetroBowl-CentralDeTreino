@@ -302,7 +302,7 @@ def finalizar_sessao_callback():
     st.rerun()
 
 # ==========================================
-# 7. BARRA LATERAL (CONFIGS)
+# 7. BARRA LATERAL (CONFIGS) - CORRIGIDA
 # ==========================================
 arquivo = st.sidebar.file_uploader("Carregue o Total Bank (.xlsx)", type=["xlsx"])
 voz_ativa = st.sidebar.checkbox("🔊 Narrar no Sorteio", value=True)
@@ -316,20 +316,25 @@ if arquivo:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📚 Áreas de Treino")
     
-    # Caixa "Selecionar Todas"
     selecionar_todas = st.sidebar.checkbox("🌍 Selecionar Todas as Áreas", value=False)
     st.sidebar.caption("Ou escolha matérias específicas:")
     
-    # Loop de checkboxes individuais
+    # Se 'selecionar_todas' for marcado, preenchemos a lista no backend imediatamente
+    if selecionar_todas:
+        areas_selecionadas = areas_disponiveis.copy()
+        
     for area in areas_disponiveis:
-        # Se "selecionar_todas" estiver ativa, a caixa fica marcada e desabilitada
-        if st.sidebar.checkbox(area, value=selecionar_todas, disabled=selecionar_todas, key=f"chk_{area}"):
+        marcado = st.sidebar.checkbox(area, value=selecionar_todas, disabled=selecionar_todas, key=f"chk_{area}")
+        # Só adiciona manualmente se 'selecionar_todas' estiver falso para não duplicar
+        if marcado and not selecionar_todas:
             areas_selecionadas.append(area)
 
     if areas_selecionadas:
-        # Garante que não há duplicatas na lista
+        # Garante que não há duplicatas e filtra
         areas_selecionadas = list(set(areas_selecionadas))
         df_filtrado = df[df["Area"].isin(areas_selecionadas)]
+    else:
+        st.sidebar.info("👈 Marque as áreas acima para iniciar.")
 
 # ==========================================
 # 8. ABAS: ARENA / SESSÃO / HISTÓRICO
@@ -429,7 +434,7 @@ with tab_jogo:
                 with nav_c2:
                     st.button("⏹️ Encerrar Sessão", use_container_width=True, on_click=finalizar_sessao_callback)
     elif arquivo:
-        st.info("👈 Selecione pelo menos uma área na barra lateral para começar.")
+        pass # A mensagem já é exibida na barra lateral
 
 # --- SESSÃO ATUAL ---
 with tab_sessao:
@@ -466,6 +471,7 @@ with tab_hist:
         todos_erros = dados_db.get('erros_total', [])
         if todos_erros:
             st.subheader("📚 Banco de Erros Histórico")
+            
             erros_recentes = list(reversed(todos_erros[-40:]))
             render_tabela_erros_html(erros_recentes, height=500)
 

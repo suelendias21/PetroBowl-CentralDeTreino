@@ -94,7 +94,7 @@ def registrar_sessao(usuario, estatisticas_sessao, erros_sessao, session_id, num
         db[usuario] = dados
 
 # ==========================================
-# FUNÇÃO PARA RENDERIZAR TABELA HTML COM ÁUDIO E RESPOSTA OCULTA (CORRIGIDA)
+# FUNÇÃO PARA RENDERIZAR TABELA HTML COM ÁUDIO E RESPOSTA OCULTA
 # ==========================================
 def render_tabela_erros_html(erros_list, height=420):
     if not erros_list:
@@ -239,7 +239,7 @@ if not st.session_state.logado:
             if not nu or not ns:
                 st.error("Preencha todos os campos.")
             elif not usuario_existe(nu):
-                salvar_usuario(nu, {'senha': hash_senha(ns), 'historico_total': {}, 'erros_total': []})
+                salvar_usuario(nu, {'senha': hash_senha(ns), 'historico_total': {}, 'erros_total': [], 'sessoes': []})
                 st.success("Conta criada com sucesso!")
             else:
                 st.error("Este usuário já existe.")
@@ -428,7 +428,7 @@ with tab_jogo:
 with tab_sessao:
     st.header(f"📊 Desempenho da Sessão #{st.session_state.numero_sessao}")
     if st.session_state.estatisticas:
-        df_s = pd.read_dict(st.session_state.estatisticas, orient='index')
+        df_s = pd.DataFrame.from_dict(st.session_state.estatisticas, orient='index')
         df_s['Taxa (%)'] = (df_s['Acertos'] / df_s['Tentativas'] * 100).round(1)
         m1, m2, m3 = st.columns(3)
         m1.metric("Total Perguntas", st.session_state.contagem_perguntas_sessao)
@@ -438,7 +438,7 @@ with tab_sessao:
         
         if st.session_state.historico_erros:
             st.subheader("📚 Revisão de Erros da Sessão")
-            # Renderiza a tabela HTML com JS embutido e respostas ocultas cinzas
+            # Renderiza a tabela HTML com JS embutido e respostas ocultas
             render_tabela_erros_html(st.session_state.historico_erros, height=450)
             
             csv = pd.DataFrame(st.session_state.historico_erros).to_csv(index=False).encode('utf-8')

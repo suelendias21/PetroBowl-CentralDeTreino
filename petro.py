@@ -179,7 +179,7 @@ def processar_resposta(acertou, df_f, areas_sel):
     if area not in st.session_state.estatisticas: st.session_state.estatisticas[area] = {'Tentativas': 0, 'Acertos': 0}
     st.session_state.estatisticas[area]['Tentativas'] += 1
     if acertou: st.session_state.estatisticas[area]['Acertos'] += 1
-    else: st.session_state.historico_erros.append({"Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']})
+    else: st.session_state.historico_erros.append({"Data": datetime.now().strftime("%H:%M"), "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']})
     
     atualizar_stats_usuario(st.session_state.usuario_atual, {area: {'Tentativas': 1, 'Acertos': 1 if acertou else 0}}, [] if acertou else [{"Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']}])
     sortear_pergunta_ciclica(df_f, areas_sel)
@@ -200,9 +200,9 @@ if arquivo:
         df_filtrado = df[df["Area"].isin(areas_selecionadas)]
 
 # ==========================================
-# 8. ARENA
+# 8. ARENA E ABAS ESTATÍSTICAS
 # ==========================================
-tab_jogo, tab_sessao, tab_hist = st.tabs(["🎮 Arena", "📊 Sessão", "🏆 Histórico"])
+tab_jogo, tab_sessao, tab_hist = st.tabs(["🎮 Arena de Simulação", "📊 Sessão Atual", "🏆 Histórico Total"])
 
 with tab_jogo:
     if not df_filtrado.empty:
@@ -239,7 +239,7 @@ with tab_jogo:
                 <button class="btn-action" id="btn-pause">⏸️ Pausar Cronômetro</button>
 
                 <script>
-                    var TOTAL = 15; // TEMPO ATUALIZADO PARA 15 SEGUNDOS
+                    var TOTAL = 15;
                     var remaining = TOTAL;
                     var paused = false;
                     var timerStarted = false;
@@ -295,11 +295,66 @@ with tab_jogo:
             c1.button("✅ Acertamos!", use_container_width=True, on_click=processar_resposta, args=(True, df_filtrado, areas_selecionadas))
             c2.button("❌ Erramos", use_container_width=True, on_click=processar_resposta, args=(False, df_filtrado, areas_selecionadas))
     else:
-        st.info("👈 Configure a planilha e as áreas na barra lateral.")
+        st.info("👈 Configure a planilha e as áreas na barra lateral para começar o treino.")
 
-# --- ESTATÍSTICAS ---
+# --- ABA SESSÃO ATUAL ---
 with tab_sessao:
-    if st.session_state.estatisticas: st.dataframe(pd.DataFrame.from_dict(st.session_state.estatisticas, orient='index'), use_container_width=True)
+    st.header("📊 Desempenho da Sessão")
+    if st.session_state.estatisticas:
+        df_s = pd.DataFrame.from_dict(st.session_state.estatisticas, orient='index')
+        df_s['Taxa de Acerto (%)'] = (df_s['Acertos'] / df_s['Tentativas'] * 100).round(1)
+        
+        t_tent = df_s['Tentativas'].sum()
+        t_acer = df_s['Acertos'].sum()
+        t_taxa = round((t_acer / t_tent * 100), 1) if t_tent > 0 else 0
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Questões Respondidas", t_tent)
+        m2.metric("Acertos", t_acer)
+        m3.metric("Aproveitamento", f"{t_taxa}%")
+
+        st.subheader("🔍 Detalhamento por Área")
+        st.dataframe(df_s.sort_values(by='Taxa de Acerto (%)'), use_container_width=True)
+
+        if st.session_state.historico_erros:
+            st.subheader("📚 Lista de Erros (Sessão)")
+            df_err = pd.DataFrame(st.session_state.historico_erros)
+            st.table(df_err)
+            
+            csv = df_err.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Baixar Planilha de Erros (.CSV)", data=csv, file_name=f"erros_sessao_{st.session_state.usuario_atual}.csv", mime="text/csv")
+    else:
+        st.info("Inicie o sorteio de perguntas para gerar estatísticas da sessão.")
+
+# --- ABA HISTÓRICO TOTAL ---
 with tab_hist:
-    d = get_dados_usuario(st.session_state.usuario_atual)
-    if d.get('historico_total'): st.dataframe(pd.DataFrame.from_dict(d['historico_total'], orient='index'), use_container_width=True)
+    st.header("🏆 Seu Histórico Acumulado")
+    dados_db = get_dados_usuario(st.session_state.usuario_atual)
+    h_total = dados_db.get('historico_total', {})
+    
+    if h_total:
+        df_h = pd.DataFrame.from_dict(h_total, orient='index')
+        df_h['Taxa de Acerto (%)'] = (df_h['Acertos'] / df_h['Tentativas'] * 100).round(1)
+        
+        th_tent = df_h['Tentativas'].sum()
+        th_acer = df_h['Acertos'].sum()
+        th_taxa = round((th_acer / th_tent * 100), 1) if th_tent > 0 else 0
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total de Questões", th_tent, help="Soma de todas as suas sessões")
+        c2.metric("Total de Acertos", th_acer)
+        c3.metric("Taxa Global", f"{th_taxa}%")
+
+        st.subheader("📈 Performance por Matéria")
+        st.dataframe(df_h.sort_values(by='Taxa de Acerto (%)'), use_container_width=True)
+
+        # Download do histórico completo
+        csv_hist = df_h.reset_index().rename(columns={'index': 'Área'}).to_csv(index=False).encode('utf-8')
+        st.download_button("📊 Baixar Histórico Completo (.CSV)", data=csv_hist, file_name=f"historico_total_{st.session_state.usuario_atual}.csv", mime="text/csv")
+        
+        # Alerta de áreas críticas
+        fracas = df_h[df_h['Taxa de Acerto (%)'] < 50].index.tolist()
+        if fracas:
+            st.warning(f"⚠️ **Atenção Capitã:** O rendimento está abaixo de 50% em: {', '.join(fracas)}. Focar nesses tópicos!")
+    else:
+        st.info("Ainda não há dados acumulados. Suas sessões serão salvas aqui automaticamente.")

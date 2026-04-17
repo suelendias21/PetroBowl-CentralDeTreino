@@ -94,7 +94,7 @@ def registrar_sessao(usuario, estatisticas_sessao, erros_sessao, session_id, num
         db[usuario] = dados
 
 # ==========================================
-# FUNÇÃO PARA RENDERIZAR TABELA HTML COM ÁUDIO E RESPOSTA OCULTA
+# FUNÇÃO PARA RENDERIZAR TABELA HTML COM ÁUDIO E RESPOSTA OCULTA (CORRIGIDA)
 # ==========================================
 def render_tabela_erros_html(erros_list, height=420):
     if not erros_list:
@@ -119,7 +119,7 @@ def render_tabela_erros_html(erros_list, height=420):
             <td>{area}</td>
             <td>{perg}</td>
             <td>
-                <span class="resp-blur" onclick="this.classList.toggle('revealed')" title="Clique para revelar a resposta">{resp}</span>
+                <span class="resp-hidden" onclick="this.classList.toggle('revealed')" title="Clique para revelar a resposta">{resp}</span>
             </td>
             <td style="text-align: center;">
                 <button class="btn-play" onclick="speak('{perg_js}')" title="Ouvir Pergunta">▶️</button>
@@ -136,23 +136,26 @@ def render_tabela_erros_html(erros_list, height=420):
         th {{ background-color: #f8f9fa; font-weight: 600; color: #2c3e50; position: sticky; top: 0; z-index: 1; border-bottom: 2px solid #e67e22; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1); }}
         tr:hover {{ background-color: #fafafa; }}
         
-        /* Efeito de desfoque para a resposta */
-        .resp-blur {{
-            filter: blur(8px);
+        /* NOVO ESTILO: Resposta Oculta com Cor Sólida (sem borrão) */
+        .resp-hidden {{
+            color: transparent; /* Torna o texto invisível */
+            background-color: #e0e0e0; /* Fundo cinza sólido para esconder */
             cursor: pointer;
-            transition: filter 0.3s ease;
-            user-select: none;
+            transition: background-color 0.3s ease, color 0.1s ease;
+            user-select: none; /* Impede selecionar o texto enquanto oculto */
             display: inline-block;
-            background-color: #fff8f0;
-            padding: 4px 8px;
+            padding: 4px 10px;
             border-radius: 4px;
+            min-width: 80px; /* Garante um tamanho mínimo clicável */
+            min-height: 1.2em;
         }}
-        .resp-blur:hover {{
-            filter: blur(4px); /* Fica levemente mais nítido ao passar o mouse */
+        .resp-hidden:hover {{
+            background-color: #d0d0d0; /* Escurece levemente no hover */
         }}
-        .resp-blur.revealed {{
-            filter: blur(0px); /* Revela completamente ao clicar */
-            background-color: transparent;
+        .resp-hidden.revealed {{
+            color: #333; /* Mostra a cor original do texto */
+            background-color: transparent; /* Remove o fundo sólido */
+            user-select: text; /* Permite selecionar após revelar */
         }}
 
         .btn-play {{ background-color: #e67e22; color: white; border: none; border-radius: 5px; padding: 6px 12px; cursor: pointer; font-size: 14px; transition: 0.2s; }}
@@ -236,7 +239,7 @@ if not st.session_state.logado:
             if not nu or not ns:
                 st.error("Preencha todos os campos.")
             elif not usuario_existe(nu):
-                salvar_usuario(nu, {'senha': hash_senha(ns), 'historico_total': {}, 'erros_total': [], 'sessoes': []})
+                salvar_usuario(nu, {'senha': hash_senha(ns), 'historico_total': {}, 'erros_total': []})
                 st.success("Conta criada com sucesso!")
             else:
                 st.error("Este usuário já existe.")
@@ -425,7 +428,7 @@ with tab_jogo:
 with tab_sessao:
     st.header(f"📊 Desempenho da Sessão #{st.session_state.numero_sessao}")
     if st.session_state.estatisticas:
-        df_s = pd.DataFrame.from_dict(st.session_state.estatisticas, orient='index')
+        df_s = pd.read_dict(st.session_state.estatisticas, orient='index')
         df_s['Taxa (%)'] = (df_s['Acertos'] / df_s['Tentativas'] * 100).round(1)
         m1, m2, m3 = st.columns(3)
         m1.metric("Total Perguntas", st.session_state.contagem_perguntas_sessao)
@@ -435,7 +438,7 @@ with tab_sessao:
         
         if st.session_state.historico_erros:
             st.subheader("📚 Revisão de Erros da Sessão")
-            # Renderiza a tabela HTML com JS embutido
+            # Renderiza a tabela HTML com JS embutido e respostas ocultas cinzas
             render_tabela_erros_html(st.session_state.historico_erros, height=450)
             
             csv = pd.DataFrame(st.session_state.historico_erros).to_csv(index=False).encode('utf-8')

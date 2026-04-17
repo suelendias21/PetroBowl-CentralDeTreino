@@ -263,7 +263,7 @@ with tab_jogo:
                     <div class="box" id="q-box">{p['pergunta']}</div>
                     <div class="box" id="a-box">{p['resposta']}</div>
 
-                    <button class="btn-action" id="btn-pause">⏸️ Pausar Cronômetro</button>
+                    <button class="btn-action" id="btn-pause">⏸️ Pausar Narração</button>
 
                     <script>
                         var TOTAL = 15;
@@ -277,6 +277,7 @@ with tab_jogo:
                         var bar = document.getElementById('timer-bar');
                         var qBox = document.getElementById('q-box');
                         var aBox = document.getElementById('a-box');
+                        var btnPause = document.getElementById('btn-pause');
 
                         function tick() {{
                             if (paused || !timerStarted) return;
@@ -300,20 +301,49 @@ with tab_jogo:
                                 var msg = new SpeechSynthesisUtterance(perguntaTxt);
                                 msg.lang = 'en-US';
                                 msg.onstart = () => {{ display.textContent = "📢 Lendo..."; }};
-                                msg.onend = () => {{ timerStarted = true; tick(); }};
+                                msg.onend = () => {{ 
+                                    // Só inicia o tempo se não estiver pausado manualmente durante a leitura
+                                    if (!paused) {{
+                                        timerStarted = true;
+                                        btnPause.textContent = "⏸️ Pausar Cronômetro";
+                                        tick();
+                                    }} else {{
+                                        // Se estava pausado na leitura, marca que ao despausar deve iniciar o timer
+                                        timerStarted = true;
+                                    }}
+                                }};
                                 window.speechSynthesis.speak(msg);
                             }} else {{
                                 timerStarted = true;
+                                btnPause.textContent = "⏸️ Pausar Cronômetro";
                                 tick();
                             }}
                         }};
 
                         document.getElementById('btn-reveal-q').onclick = () => {{ qBox.style.display = "block"; }};
                         document.getElementById('btn-reveal-a').onclick = () => {{ aBox.style.display = "block"; }};
-                        document.getElementById('btn-pause').onclick = function() {{
+                        
+                        btnPause.onclick = function() {{
                             paused = !paused;
-                            this.textContent = paused ? "▶️ Continuar" : "⏸️ Pausar Cronômetro";
-                            if (!paused) tick();
+                            
+                            if (paused) {{
+                                // Lógica de PAUSAR
+                                if (!timerStarted && vozAtiva) {{
+                                    window.speechSynthesis.pause();
+                                    this.textContent = "▶️ Continuar Narração";
+                                }} else {{
+                                    this.textContent = "▶️ Continuar Cronômetro";
+                                }}
+                            }} else {{
+                                // Lógica de CONTINUAR
+                                if (!timerStarted && vozAtiva) {{
+                                    window.speechSynthesis.resume();
+                                    this.textContent = "⏸️ Pausar Narração";
+                                }} else {{
+                                    this.textContent = "⏸️ Pausar Cronômetro";
+                                    tick();
+                                }}
+                            }}
                         }};
                     </script>
                 """, height=400)
@@ -323,9 +353,7 @@ with tab_jogo:
                 c2.button("❌ Erramos", use_container_width=True, on_click=processar_resposta, args=(False,))
             
             else:
-                # PAINEL DE NAVEGAÇÃO LIMPO (Sem pergunta/resposta)
                 st.info("Resultado registrado! Como deseja prosseguir?")
-                
                 nav_c1, nav_c2 = st.columns(2)
                 with nav_c1:
                     st.button("⏭️ Próxima Pergunta", use_container_width=True, type="primary", 
@@ -336,7 +364,7 @@ with tab_jogo:
     else:
         st.info("👈 Selecione áreas na barra lateral para começar.")
 
-# --- ABAS DE ESTATÍSTICAS ---
+# --- ESTATÍSTICAS ---
 with tab_sessao:
     st.header(f"📊 Sessão #{st.session_state.numero_sessao}")
     if st.session_state.estatisticas:

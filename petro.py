@@ -94,7 +94,7 @@ def registrar_sessao(usuario, estatisticas_sessao, erros_sessao, session_id, num
         db[usuario] = dados
 
 # ==========================================
-# FUNÇÃO PARA RENDERIZAR TABELA HTML COM ÁUDIO E RESPOSTA OCULTA (CORRIGIDA)
+# FUNÇÃO PARA RENDERIZAR TABELA HTML COM ÁUDIO E RESPOSTA OCULTA
 # ==========================================
 def render_tabela_erros_html(erros_list, height=420):
     if not erros_list:
@@ -136,27 +136,25 @@ def render_tabela_erros_html(erros_list, height=420):
         th {{ background-color: #f8f9fa; font-weight: 600; color: #2c3e50; position: sticky; top: 0; z-index: 1; border-bottom: 2px solid #e67e22; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1); }}
         tr:hover {{ background-color: #fafafa; }}
         
-        /* NOVO ESTILO: Resposta Oculta TOTALMENTE Camuflada em Branco */
         .resp-hidden {{
-            color: transparent; /* Texto invisível */
-            background-color: #ffffff; /* Fundo branco puro para camuflar */
+            color: transparent; 
+            background-color: #ffffff; 
             cursor: pointer;
-            /* Transição rápida para evitar 'sombra' ou borrão na revelação */
             transition: color 0.1s ease-in-out; 
-            user-select: none; /* Impede selecionar o texto invisível */
+            user-select: none; 
             display: inline-block;
             padding: 4px 10px;
             border-radius: 4px;
-            min-width: 80px; /* Garante um tamanho mínimo clicável */
+            min-width: 80px; 
             min-height: 1.2em;
         }}
         .resp-hidden:hover {{
-            background-color: #f5f5f5; /* Dica visual sutilíssima no hover */
+            background-color: #f5f5f5; 
         }}
         .resp-hidden.revealed {{
-            color: #333; /* Mostra o texto */
-            background-color: transparent; /* Remove o fundo sólido */
-            user-select: text; /* Permite selecionar após revelar */
+            color: #333; 
+            background-color: transparent; 
+            user-select: text; 
         }}
 
         .btn-play {{ background-color: #e67e22; color: white; border: none; border-radius: 5px; padding: 6px 12px; cursor: pointer; font-size: 14px; transition: 0.2s; }}
@@ -311,7 +309,7 @@ def finalizar_sessao_callback():
     st.rerun()
 
 # ==========================================
-# 7. BARRA LATERAL (CONFIGS)
+# 7. BARRA LATERAL (CONFIGS) - ATUALIZADA
 # ==========================================
 arquivo = st.sidebar.file_uploader("Carregue o Total Bank (.xlsx)", type=["xlsx"])
 voz_ativa = st.sidebar.checkbox("🔊 Narrar no Sorteio", value=True)
@@ -321,9 +319,20 @@ areas_selecionadas = []
 if arquivo:
     df = carregar_planilha(arquivo)
     areas_disponiveis = sorted(list(df["Area"].dropna().unique()))
-    areas_selecionadas = st.sidebar.multiselect("Áreas de Treino:", options=areas_disponiveis, default=areas_disponiveis)
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📚 Áreas de Treino")
+    st.sidebar.caption("Selecione as matérias para adicionar ao sorteio:")
+    
+    # Substitui o multiselect por uma lista limpa de checkboxes
+    for area in areas_disponiveis:
+        if st.sidebar.checkbox(area, value=False, key=f"chk_{area}"):
+            areas_selecionadas.append(area)
+
     if areas_selecionadas:
         df_filtrado = df[df["Area"].isin(areas_selecionadas)]
+    else:
+        st.sidebar.info("👈 Marque as áreas acima para iniciar.")
 
 # ==========================================
 # 8. ABAS: ARENA / SESSÃO / HISTÓRICO
@@ -422,8 +431,8 @@ with tab_jogo:
                     st.button("⏭️ Próxima Pergunta", use_container_width=True, type="primary", on_click=sortear_pergunta_ciclica, args=(df_filtrado, areas_selecionadas))
                 with nav_c2:
                     st.button("⏹️ Encerrar Sessão", use_container_width=True, on_click=finalizar_sessao_callback)
-    else:
-        st.info("👈 Selecione áreas na barra lateral para começar.")
+    elif arquivo:
+        st.info("👈 Selecione pelo menos uma área na barra lateral para começar.")
 
 # --- SESSÃO ATUAL ---
 with tab_sessao:
@@ -439,7 +448,6 @@ with tab_sessao:
         
         if st.session_state.historico_erros:
             st.subheader("📚 Revisão de Erros da Sessão")
-            # Renderiza a tabela HTML com JS embutido e respostas ocultas totalmente brancas
             render_tabela_erros_html(st.session_state.historico_erros, height=450)
             
             csv = pd.DataFrame(st.session_state.historico_erros).to_csv(index=False).encode('utf-8')
@@ -462,7 +470,6 @@ with tab_hist:
         if todos_erros:
             st.subheader("📚 Banco de Erros Histórico")
             
-            # Pegamos os últimos 40 erros para não gerar um HTML gigantesco
             erros_recentes = list(reversed(todos_erros[-40:]))
             render_tabela_erros_html(erros_recentes, height=500)
 

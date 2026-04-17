@@ -108,7 +108,6 @@ def render_tabela_erros_html(erros_list, height=420):
         perg = str(err.get('Pergunta', '-'))
         resp = str(err.get('Resposta', '-'))
         
-        # Escapar caracteres para o JavaScript da narração
         perg_js = perg.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'").replace('\n', ' ')
         
         rows += f"""
@@ -148,14 +147,8 @@ def render_tabela_erros_html(erros_list, height=420):
             min-width: 80px; 
             min-height: 1.2em;
         }}
-        .resp-hidden:hover {{
-            background-color: #f5f5f5; 
-        }}
-        .resp-hidden.revealed {{
-            color: #333; 
-            background-color: transparent; 
-            user-select: text; 
-        }}
+        .resp-hidden:hover {{ background-color: #f5f5f5; }}
+        .resp-hidden.revealed {{ color: #333; background-color: transparent; user-select: text; }}
 
         .btn-play {{ background-color: #e67e22; color: white; border: none; border-radius: 5px; padding: 6px 12px; cursor: pointer; font-size: 14px; transition: 0.2s; }}
         .btn-play:hover {{ background-color: #cf6d17; transform: scale(1.05); }}
@@ -309,7 +302,7 @@ def finalizar_sessao_callback():
     st.rerun()
 
 # ==========================================
-# 7. BARRA LATERAL (CONFIGS) - ATUALIZADA
+# 7. BARRA LATERAL (CONFIGS)
 # ==========================================
 arquivo = st.sidebar.file_uploader("Carregue o Total Bank (.xlsx)", type=["xlsx"])
 voz_ativa = st.sidebar.checkbox("🔊 Narrar no Sorteio", value=True)
@@ -322,17 +315,21 @@ if arquivo:
     
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📚 Áreas de Treino")
-    st.sidebar.caption("Selecione as matérias para adicionar ao sorteio:")
     
-    # Substitui o multiselect por uma lista limpa de checkboxes
+    # Caixa "Selecionar Todas"
+    selecionar_todas = st.sidebar.checkbox("🌍 Selecionar Todas as Áreas", value=False)
+    st.sidebar.caption("Ou escolha matérias específicas:")
+    
+    # Loop de checkboxes individuais
     for area in areas_disponiveis:
-        if st.sidebar.checkbox(area, value=False, key=f"chk_{area}"):
+        # Se "selecionar_todas" estiver ativa, a caixa fica marcada e desabilitada
+        if st.sidebar.checkbox(area, value=selecionar_todas, disabled=selecionar_todas, key=f"chk_{area}"):
             areas_selecionadas.append(area)
 
     if areas_selecionadas:
+        # Garante que não há duplicatas na lista
+        areas_selecionadas = list(set(areas_selecionadas))
         df_filtrado = df[df["Area"].isin(areas_selecionadas)]
-    else:
-        st.sidebar.info("👈 Marque as áreas acima para iniciar.")
 
 # ==========================================
 # 8. ABAS: ARENA / SESSÃO / HISTÓRICO
@@ -469,7 +466,6 @@ with tab_hist:
         todos_erros = dados_db.get('erros_total', [])
         if todos_erros:
             st.subheader("📚 Banco de Erros Histórico")
-            
             erros_recentes = list(reversed(todos_erros[-40:]))
             render_tabela_erros_html(erros_recentes, height=500)
 

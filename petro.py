@@ -175,7 +175,6 @@ def processar_resposta(acertou, df_f, areas_sel):
     p = st.session_state.pergunta_atual
     if not p: return
     
-    # 1. Registrar dado
     area = p['area']
     if area not in st.session_state.estatisticas: st.session_state.estatisticas[area] = {'Tentativas': 0, 'Acertos': 0}
     st.session_state.estatisticas[area]['Tentativas'] += 1
@@ -183,8 +182,6 @@ def processar_resposta(acertou, df_f, areas_sel):
     else: st.session_state.historico_erros.append({"Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']})
     
     atualizar_stats_usuario(st.session_state.usuario_atual, {area: {'Tentativas': 1, 'Acertos': 1 if acertou else 0}}, [] if acertou else [{"Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']}])
-    
-    # 2. Sortear Próxima e Recarregar
     sortear_pergunta_ciclica(df_f, areas_sel)
 
 # ==========================================
@@ -242,7 +239,7 @@ with tab_jogo:
                 <button class="btn-action" id="btn-pause">⏸️ Pausar Cronômetro</button>
 
                 <script>
-                    var TOTAL = 25;
+                    var TOTAL = 15; // TEMPO ATUALIZADO PARA 15 SEGUNDOS
                     var remaining = TOTAL;
                     var paused = false;
                     var timerStarted = false;
@@ -270,7 +267,6 @@ with tab_jogo:
                         setTimeout(tick, 1000);
                     }}
 
-                    // FUNÇÃO DE INÍCIO AUTOMÁTICO
                     window.onload = function() {{
                         if (vozAtiva) {{
                             window.speechSynthesis.cancel();
@@ -296,7 +292,6 @@ with tab_jogo:
             """, height=400)
 
             c1, c2 = st.columns(2)
-            # Ao clicar, chama a função que salva E já sorteia a próxima
             c1.button("✅ Acertamos!", use_container_width=True, on_click=processar_resposta, args=(True, df_filtrado, areas_selecionadas))
             c2.button("❌ Erramos", use_container_width=True, on_click=processar_resposta, args=(False, df_filtrado, areas_selecionadas))
     else:

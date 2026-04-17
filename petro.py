@@ -94,7 +94,7 @@ def registrar_sessao(usuario, estatisticas_sessao, erros_sessao, session_id, num
         db[usuario] = dados
 
 # ==========================================
-# FUNÇÃO PARA RENDERIZAR TABELA HTML COM ÁUDIO E RESPOSTA OCULTA
+# FUNÇÃO PARA RENDERIZAR TABELA HTML COM ÁUDIO E RESPOSTA OCULTA (CORRIGIDA)
 # ==========================================
 def render_tabela_erros_html(erros_list, height=420):
     if not erros_list:
@@ -136,13 +136,14 @@ def render_tabela_erros_html(erros_list, height=420):
         th {{ background-color: #f8f9fa; font-weight: 600; color: #2c3e50; position: sticky; top: 0; z-index: 1; border-bottom: 2px solid #e67e22; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1); }}
         tr:hover {{ background-color: #fafafa; }}
         
-        /* NOVO ESTILO: Resposta Oculta com Cor Sólida (sem borrão) */
+        /* NOVO ESTILO: Resposta Oculta TOTALMENTE Camuflada em Branco */
         .resp-hidden {{
-            color: transparent; /* Torna o texto invisível */
-            background-color: #e0e0e0; /* Fundo cinza sólido para esconder */
+            color: transparent; /* Texto invisível */
+            background-color: #ffffff; /* Fundo branco puro para camuflar */
             cursor: pointer;
-            transition: background-color 0.3s ease, color 0.1s ease;
-            user-select: none; /* Impede selecionar o texto enquanto oculto */
+            /* Transição rápida para evitar 'sombra' ou borrão na revelação */
+            transition: color 0.1s ease-in-out; 
+            user-select: none; /* Impede selecionar o texto invisível */
             display: inline-block;
             padding: 4px 10px;
             border-radius: 4px;
@@ -150,10 +151,10 @@ def render_tabela_erros_html(erros_list, height=420):
             min-height: 1.2em;
         }}
         .resp-hidden:hover {{
-            background-color: #d0d0d0; /* Escurece levemente no hover */
+            background-color: #f5f5f5; /* Dica visual sutilíssima no hover */
         }}
         .resp-hidden.revealed {{
-            color: #333; /* Mostra a cor original do texto */
+            color: #333; /* Mostra o texto */
             background-color: transparent; /* Remove o fundo sólido */
             user-select: text; /* Permite selecionar após revelar */
         }}
@@ -239,7 +240,7 @@ if not st.session_state.logado:
             if not nu or not ns:
                 st.error("Preencha todos os campos.")
             elif not usuario_existe(nu):
-                salvar_usuario(nu, {'senha': hash_senha(ns), 'historico_total': {}, 'erros_total': [], 'sessoes': []})
+                salvar_usuario(nu, {'senha': hash_senha(ns), 'historico_total': {}, 'erros_total': []})
                 st.success("Conta criada com sucesso!")
             else:
                 st.error("Este usuário já existe.")
@@ -438,7 +439,7 @@ with tab_sessao:
         
         if st.session_state.historico_erros:
             st.subheader("📚 Revisão de Erros da Sessão")
-            # Renderiza a tabela HTML com JS embutido e respostas ocultas
+            # Renderiza a tabela HTML com JS embutido e respostas ocultas totalmente brancas
             render_tabela_erros_html(st.session_state.historico_erros, height=450)
             
             csv = pd.DataFrame(st.session_state.historico_erros).to_csv(index=False).encode('utf-8')

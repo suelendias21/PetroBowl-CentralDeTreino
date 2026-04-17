@@ -62,10 +62,10 @@ def atualizar_stats_usuario(usuario, stats_delta, erros_novos):
         dados['historico_total'] = hist
         erros = dados.get('erros_total', [])
         erros.extend(erros_novos)
-        dados['erros_total'] = erros[-200:]
+        dados['erros_total'] = erros[-500:] # Aumentado limite de erros total
         db[usuario] = dados
 
-def registrar_sessao(usuario, estatisticas_sessao, erros_sessao, session_id=None):
+def registrar_sessao(usuario, estatisticas_sessao, erros_sessao, session_id, num_sessao):
     if not estatisticas_sessao: return
     with shelve.open(DB_PATH) as db:
         dados = db.get(usuario, {'senha': '', 'historico_total': {}, 'erros_total': [], 'sessoes': []})
@@ -74,6 +74,7 @@ def registrar_sessao(usuario, estatisticas_sessao, erros_sessao, session_id=None
         total_acert = sum(v['Acertos']    for v in estatisticas_sessao.values())
         registro = {
             'session_id': session_id,
+            'numero': num_sessao,
             'data': datetime.now().strftime('%d/%m/%Y %H:%M'),
             'questoes': total_tent,
             'acertos': total_acert,
@@ -81,13 +82,14 @@ def registrar_sessao(usuario, estatisticas_sessao, erros_sessao, session_id=None
             'por_area': dict(estatisticas_sessao),
             'erros': list(erros_sessao)
         }
-        if session_id:
-            for i, s in enumerate(sessoes):
-                if s.get('session_id') == session_id:
-                    sessoes[i] = registro
-                    break
-            else: sessoes.append(registro)
-        else: sessoes.append(registro)
+        # Upsert baseado no session_id para não duplicar se salvar várias vezes
+        for i, s in enumerate(sessoes):
+            if s.get('session_id') == session_id:
+                sessoes[i] = registro
+                break
+        else:
+            sessoes.append(registro)
+        
         dados['sessoes'] = sessoes[-100:]
         db[usuario] = dados
 
@@ -97,6 +99,7 @@ def registrar_sessao(usuario, estatisticas_sessao, erros_sessao, session_id=None
 defaults = {
     'logado': False,
     'usuario_atual': None,
+    'numero_sessao': 1,
     'pergunta_atual': None,
     'historico_erros': [],
     'estatisticas': {},
@@ -120,8 +123,11 @@ if not st.session_state.logado:
         s = st.text_input("Senha", type="password", key="l_s")
         if st.button("Entrar", use_container_width=True):
             if usuario_existe(u) and senha_correta(u, s):
+                dados = get_dados_usuario(u)
                 st.session_state.logado = True
                 st.session_state.usuario_atual = u
+                # Define o número da sessão com base no histórico existente
+                st.session_state.numero_sessao = len(dados.get('sessoes', [])) + 1
                 st.session_state.session_id = str(uuid.uuid4())
                 st.rerun()
     with col_r:
@@ -130,17 +136,17 @@ if not st.session_state.logado:
         ns = st.text_input("Nova senha", type="password", key="n_s")
         if st.button("Criar Conta", use_container_width=True):
             if not usuario_existe(nu):
-                salvar_usuario(nu, {'senha': hash_senha(ns), 'historico_total': {}, 'erros_total': []})
-                st.success("Criado!")
+                salvar_usuario(nu, {'senha': hash_senha(ns), 'historico_total': {}, 'erros_total': [], 'sessoes': []})
+                st.success("Conta criada!")
     st.stop()
 
 # ==========================================
 # 5. HEADER
 # ==========================================
 c_t, c_l = st.columns([5, 1])
-c_t.markdown(f"### 🧠 PetroBowl Intelligence | <span style='color:#27ae60;'>👤 {st.session_state.usuario_atual}</span>", unsafe_allow_html=True)
+c_t.markdown(f"### 🧠 PetroBowl Intelligence | Sessão {st.session_state.numero_sessao} | <span style='color:#27ae60;'>👤 {st.session_state.usuario_atual}</span>", unsafe_allow_html=True)
 if c_l.button("🚪 Sair", use_container_width=True):
-    registrar_sessao(st.session_state.usuario_atual, st.session_state.estatisticas, st.session_state.historico_erros, st.session_state.session_id)
+    registrar_sessao(st.session_state.usuario_atual, st.session_state.estatisticas, st.session_state.historico_erros, st.session_state.session_id, st.session_state.numero_sessao)
     st.session_state.logado = False
     st.rerun()
 
@@ -179,9 +185,17 @@ def processar_resposta(acertou, df_f, areas_sel):
     if area not in st.session_state.estatisticas: st.session_state.estatisticas[area] = {'Tentativas': 0, 'Acertos': 0}
     st.session_state.estatisticas[area]['Tentativas'] += 1
     if acertou: st.session_state.estatisticas[area]['Acertos'] += 1
-    else: st.session_state.historico_erros.append({"Data": datetime.now().strftime("%H:%M"), "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']})
+    else: 
+        # Adiciona o número da sessão nos dados do erro
+        st.session_state.historico_erros.append({
+            "Sessão": st.session_state.numero_sessao,
+            "Data": datetime.now().strftime("%H:%M"), 
+            "Área": area, 
+            "Pergunta": p['pergunta'], 
+            "Resposta": p['resposta']
+        })
     
-    atualizar_stats_usuario(st.session_state.usuario_atual, {area: {'Tentativas': 1, 'Acertos': 1 if acertou else 0}}, [] if acertou else [{"Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']}])
+    atualizar_stats_usuario(st.session_state.usuario_atual, {area: {'Tentativas': 1, 'Acertos': 1 if acertou else 0}}, [] if acertou else [{"Sessão": st.session_state.numero_sessao, "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']}])
     sortear_pergunta_ciclica(df_f, areas_sel)
 
 # ==========================================
@@ -299,7 +313,7 @@ with tab_jogo:
 
 # --- ABA SESSÃO ATUAL ---
 with tab_sessao:
-    st.header("📊 Desempenho da Sessão")
+    st.header(f"📊 Desempenho da Sessão Atual (#{st.session_state.numero_sessao})")
     if st.session_state.estatisticas:
         df_s = pd.DataFrame.from_dict(st.session_state.estatisticas, orient='index')
         df_s['Taxa de Acerto (%)'] = (df_s['Acertos'] / df_s['Tentativas'] * 100).round(1)
@@ -317,12 +331,17 @@ with tab_sessao:
         st.dataframe(df_s.sort_values(by='Taxa de Acerto (%)'), use_container_width=True)
 
         if st.session_state.historico_erros:
-            st.subheader("📚 Lista de Erros (Sessão)")
+            st.subheader(f"📚 Lista de Erros (Sessão {st.session_state.numero_sessao})")
             df_err = pd.DataFrame(st.session_state.historico_erros)
-            st.table(df_err)
+            st.dataframe(df_err, use_container_width=True)
             
             csv = df_err.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Baixar Planilha de Erros (.CSV)", data=csv, file_name=f"erros_sessao_{st.session_state.usuario_atual}.csv", mime="text/csv")
+            st.download_button(
+                "📥 Baixar Planilha de Erros desta Sessão (.CSV)", 
+                data=csv, 
+                file_name=f"erros_Sessao_{st.session_state.numero_sessao}_{st.session_state.usuario_atual}.csv", 
+                mime="text/csv"
+            )
     else:
         st.info("Inicie o treino para gerar estatísticas.")
 
@@ -331,6 +350,7 @@ with tab_hist:
     st.header("🏆 Histórico Acumulado")
     dados_db = get_dados_usuario(st.session_state.usuario_atual)
     h_total = dados_db.get('historico_total', {})
+    h_sessoes = dados_db.get('sessoes', [])
     
     if h_total:
         df_h = pd.DataFrame.from_dict(h_total, orient='index')
@@ -345,14 +365,25 @@ with tab_hist:
         c2.metric("Total de Acertos", th_acer)
         c3.metric("Taxa Global", f"{th_taxa}%")
 
-        st.subheader("📈 Performance por Matéria")
+        st.subheader("📈 Performance por Matéria (Total)")
         st.dataframe(df_h.sort_values(by='Taxa de Acerto (%)'), use_container_width=True)
 
-        csv_hist = df_h.reset_index().rename(columns={'index': 'Área'}).to_csv(index=False).encode('utf-8')
-        st.download_button("📊 Baixar Histórico Completo (.CSV)", data=csv_hist, file_name=f"historico_total_{st.session_state.usuario_atual}.csv", mime="text/csv")
-        
-        fracas = df_h[df_h['Taxa de Acerto (%)'] < 50].index.tolist()
-        if fracas:
-            st.warning(f"⚠️ **Atenção:** O rendimento está abaixo de 50% em: {', '.join(fracas)}. Recomenda-se reforçar o estudo nestes tópicos.")
+        if h_sessoes:
+            st.subheader("📅 Log de Sessões Passadas")
+            # Criando DataFrame resumido das sessões
+            df_log_sessoes = pd.DataFrame(h_sessoes)[['numero', 'data', 'questoes', 'acertos', 'taxa']]
+            df_log_sessoes.columns = ['Sessão', 'Data/Hora', 'Questões', 'Acertos', 'Taxa (%)']
+            st.dataframe(df_log_sessoes.sort_values(by='Sessão', ascending=False), use_container_width=True)
+
+            # Botão para baixar histórico completo de erros (acumulado)
+            todos_erros = dados_db.get('erros_total', [])
+            if todos_erros:
+                csv_todos_erros = pd.DataFrame(todos_erros).to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    "📊 Baixar Todos os Erros Acumulados (.CSV)", 
+                    data=csv_todos_erros, 
+                    file_name=f"historico_erros_total_{st.session_state.usuario_atual}.csv", 
+                    mime="text/csv"
+                )
     else:
         st.info("Seu histórico aparecerá aqui conforme você realizar os treinos.")

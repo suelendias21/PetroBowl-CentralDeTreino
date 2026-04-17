@@ -100,7 +100,7 @@ defaults = {
     'logado': False,
     'usuario_atual': None,
     'numero_sessao': 1,
-    'contagem_perguntas_sessao': 0, # Contador global de perguntas
+    'contagem_perguntas_sessao': 0, 
     'pergunta_atual': None,
     'historico_erros': [],
     'estatisticas': {},
@@ -167,7 +167,6 @@ if not st.session_state.logado:
 st.sidebar.markdown(f"### 👤 {st.session_state.usuario_atual}")
 st.sidebar.markdown(f"**Sessão Ativa: #{st.session_state.numero_sessao}**")
 
-# Navegação por rádio para evitar o pulo de abas ao narrar
 menu = st.sidebar.radio(
     "Navegação",
     ["🎮 Arena de Simulação", "📊 Sessão Atual", "🏆 Histórico Total"]
@@ -206,7 +205,7 @@ def sortear_pergunta_ciclica(df_f, areas_sel):
     df_slot = df_f[df_f[c_area].isin(bonus_set)] if slot == '⭐ BONUS' else df_f[df_f[c_area] == slot]
     if not df_slot.empty:
         linha = df_slot.sample().iloc[0]
-        st.session_state.contagem_perguntas_sessao += 1 # Aumenta o número da pergunta
+        st.session_state.contagem_perguntas_sessao += 1 
         st.session_state.pergunta_atual = {
             "num": st.session_state.contagem_perguntas_sessao,
             "area": linha[c_area], "pergunta": linha[c_perg], "resposta": linha[c_resp], "uid": str(uuid.uuid4())
@@ -222,10 +221,10 @@ def processar_resposta(acertou):
     if acertou: st.session_state.estatisticas[area]['Acertos'] += 1
     else: 
         st.session_state.historico_erros.append({
-            "Nº": p['num'], "Hora": datetime.now().strftime("%H:%M"), 
+            "Nº": p.get('num', '?'), "Hora": datetime.now().strftime("%H:%M"), 
             "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']
         })
-    atualizar_stats_usuario(st.session_state.usuario_atual, {area: {'Tentativas': 1, 'Acertos': 1 if acertou else 0}}, [] if acertou else [{"Sessão": st.session_state.numero_sessao, "Nº": p['num'], "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']}])
+    atualizar_stats_usuario(st.session_state.usuario_atual, {area: {'Tentativas': 1, 'Acertos': 1 if acertou else 0}}, [] if acertou else [{"Sessão": st.session_state.numero_sessao, "Nº": p.get('num', '?'), "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']}])
     st.session_state.aguardando_navegacao = True
 
 # ==========================================
@@ -264,7 +263,7 @@ if menu == "🎮 Arena de Simulação":
             p = st.session_state.pergunta_atual
             pergunta_js = str(p['pergunta']).replace('"', '\\"').replace('\n', ' ')
 
-            st.markdown(f"<div class='pergunta-num'>Pergunta {p['num']}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='pergunta-num'>Pergunta {p.get('num', '?')}</div>", unsafe_allow_html=True)
             st.markdown(f"<div class='area-tag'>📍 ÁREA: {p['area']}</div>", unsafe_allow_html=True)
 
             if not st.session_state.aguardando_navegacao:
@@ -338,7 +337,10 @@ if menu == "🎮 Arena de Simulação":
                 with nav_c1:
                     st.button("⏭️ Próxima Pergunta", use_container_width=True, type="primary", on_click=sortear_pergunta_ciclica, args=(df_filtrado, areas_selecionadas))
                 with nav_c2:
-                    st.button("⏹️ Encerrar Sessão", use_container_width=True, on_click=finalizar_sessao_callback)
+                    if st.button("⏹️ Encerrar Sessão", use_container_width=True):
+                        registrar_sessao(st.session_state.usuario_atual, st.session_state.estatisticas, st.session_state.historico_erros, st.session_state.session_id, st.session_state.numero_sessao)
+                        st.session_state.logado = False
+                        st.rerun()
     else:
         st.info("👈 Selecione áreas na barra lateral para começar.")
 
@@ -356,7 +358,6 @@ elif menu == "📊 Sessão Atual":
         
         if st.session_state.historico_erros:
             st.subheader("📚 Revisão de Erros da Sessão")
-            # Cabeçalho da Tabela
             h_col0, h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([0.5, 1, 2, 4, 3, 0.5])
             h_col0.markdown("**Nº**")
             h_col1.markdown("**Hora**")
@@ -368,13 +369,13 @@ elif menu == "📊 Sessão Atual":
 
             for idx, err in enumerate(st.session_state.historico_erros):
                 r_col0, r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([0.5, 1, 2, 4, 3, 0.5])
-                r_col0.write(err['Nº'])
-                r_col1.write(err['Hora'])
-                r_col2.write(err['Área'])
-                r_col3.write(err['Pergunta'])
-                r_col4.write(err['Resposta'])
+                r_col0.write(err.get('Nº', '?'))
+                r_col1.write(err.get('Hora', '-'))
+                r_col2.write(err.get('Área', '-'))
+                r_col3.write(err.get('Pergunta', '-'))
+                r_col4.write(err.get('Resposta', '-'))
                 if r_col5.button("▶️", key=f"p_sess_{idx}"):
-                    st.session_state.texto_para_narrar = err['Pergunta']
+                    st.session_state.texto_para_narrar = err.get('Pergunta', '')
                     st.rerun()
     else:
         st.info("Nenhuma pergunta respondida ainda.")
@@ -406,11 +407,11 @@ elif menu == "🏆 Histórico Total":
                 tr_col0, tr_col1, tr_col2, tr_col3, tr_col4, tr_col5 = st.columns([0.5, 1, 2, 4, 3, 0.5])
                 tr_col0.write(f"#{err.get('Sessão', '?')}")
                 tr_col1.write(err.get('Nº', '-'))
-                tr_col2.write(err['Área'])
-                tr_col3.write(err['Pergunta'])
-                tr_col4.write(err['Resposta'])
+                tr_col2.write(err.get('Área', '-'))
+                tr_col3.write(err.get('Pergunta', '-'))
+                tr_col4.write(err.get('Resposta', '-'))
                 if tr_col5.button("▶️", key=f"p_hist_{idx}"):
-                    st.session_state.texto_para_narrar = err['Pergunta']
+                    st.session_state.texto_para_narrar = err.get('Pergunta', '')
                     st.rerun()
     else:
         st.info("Sem dados no histórico ainda.")

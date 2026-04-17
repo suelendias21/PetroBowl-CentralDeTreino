@@ -24,6 +24,8 @@ st.markdown("""
     [data-testid="stSidebar"] { background-color: #f5f5f5; }
     .area-tag { text-align: center; color: #e67e22; font-size: 22px; font-weight: bold; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px;}
     .next-area-info { color: #7f8c8d; font-size: 14px; margin-bottom: 5px; font-weight: bold; }
+    /* Estilo para a lista de erros na revisão */
+    .error-review-box { border-left: 5px solid #e74c3c; padding-left: 15px; margin-bottom: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -63,6 +65,7 @@ def atualizar_stats_usuario(usuario, stats_delta, erros_novos):
         dados['historico_total'] = hist
         erros = dados.get('erros_total', [])
         erros.extend(erros_novos)
+        # Mantém histórico de erros maior para revisão posterior
         dados['erros_total'] = erros[-500:] 
         db[usuario] = dados
 
@@ -106,10 +109,27 @@ defaults = {
     'indice_area': 0,
     'session_id': None,
     'aguardando_navegacao': False,
+    'texto_para_narrar': None # Controle de narração sob demanda
 }
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
+
+# --- FUNÇÃO AUXILIAR PARA NARRAR SOB DEMANDA ---
+def componente_narrador(texto):
+    if texto:
+        pergunta_limpa = str(texto).replace('"', '\\"').replace('\n', ' ')
+        components.html(f"""
+            <script>
+                window.speechSynthesis.cancel();
+                var msg = new SpeechSynthesisUtterance("{pergunta_limpa}");
+                msg.lang = 'en-US';
+                msg.rate = 0.85;
+                window.speechSynthesis.speak(msg);
+            </script>
+        """, height=0)
+        # Limpa o estado após narrar para não repetir no próximo rerun
+        st.session_state.texto_para_narrar = None
 
 # ==========================================
 # 4. LOGIN / CADASTRO
@@ -155,6 +175,9 @@ if c_l.button("🚪 Sair", use_container_width=True):
     st.session_state.logado = False
     st.rerun()
 
+# Executa o narrador se houver texto na fila
+componente_narrador(st.session_state.texto_para_narrar)
+
 # ==========================================
 # 6. LÓGICA DO JOGO
 # ==========================================
@@ -175,17 +198,13 @@ def sortear_pergunta_ciclica(df_f, areas_sel):
     if df_f.empty: return
     c_area, c_perg, c_resp = "Area", "Question", "Answer"
     fila, bonus_set = montar_fila_ciclica(areas_sel)
-    
     idx = st.session_state.indice_area % len(fila)
     slot = fila[idx]
     st.session_state.indice_area += 1
-    
     df_slot = df_f[df_f[c_area].isin(bonus_set)] if slot == '⭐ BONUS' else df_f[df_f[c_area] == slot]
     if not df_slot.empty:
         linha = df_slot.sample().iloc[0]
-        st.session_state.pergunta_atual = {
-            "area": linha[c_area], "pergunta": linha[c_perg], "resposta": linha[c_resp], "uid": str(uuid.uuid4())
-        }
+        st.session_state.pergunta_atual = {"area": linha[c_area], "pergunta": linha[c_perg], "resposta": linha[c_resp], "uid": str(uuid.uuid4())}
         st.session_state.aguardando_navegacao = False
 
 def processar_resposta(acertou):
@@ -197,8 +216,7 @@ def processar_resposta(acertou):
     if acertou: st.session_state.estatisticas[area]['Acertos'] += 1
     else: 
         st.session_state.historico_erros.append({
-            "Sessão": st.session_state.numero_sessao,
-            "Hora": datetime.now().strftime("%H:%M"), 
+            "Sessão": st.session_state.numero_sessao, "Hora": datetime.now().strftime("%H:%M"), 
             "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']
         })
     atualizar_stats_usuario(st.session_state.usuario_atual, {area: {'Tentativas': 1, 'Acertos': 1 if acertou else 0}}, [] if acertou else [{"Sessão": st.session_state.numero_sessao, "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']}])
@@ -213,7 +231,7 @@ def finalizar_sessao_callback():
 # 7. BARRA LATERAL
 # ==========================================
 arquivo = st.sidebar.file_uploader("Carregue o Total Bank (.xlsx)", type=["xlsx"])
-voz_ativa = st.sidebar.checkbox("🔊 Narrar Automaticamente", value=True)
+voz_ativa = st.sidebar.checkbox("🔊 Narrar Automaticamente no Jogo", value=True)
 df_filtrado = pd.DataFrame()
 areas_selecionadas = []
 
@@ -225,7 +243,7 @@ if arquivo:
         df_filtrado = df[df["Area"].isin(areas_selecionadas)]
 
 # ==========================================
-# 8. INTERFACE DE TREINO
+# 8. INTERFACE DE TREINO E ESTATÍSTICAS
 # ==========================================
 tab_jogo, tab_sessao, tab_hist = st.tabs(["🎮 Arena de Simulação", "📊 Sessão Atual", "🏆 Histórico Total"])
 
@@ -306,22 +324,15 @@ with tab_jogo:
                                 window.speechSynthesis.cancel();
                                 var msg = new SpeechSynthesisUtterance(perguntaTxt);
                                 msg.lang = 'en-US';
-                                msg.rate = 0.85; // VELOCIDADE REDUZIDA
+                                msg.rate = 0.85;
                                 msg.onstart = () => {{ display.textContent = "📢 Lendo..."; }};
                                 msg.onend = () => {{ 
-                                    if (!paused) {{
-                                        timerStarted = true;
-                                        btnPause.textContent = "⏸️ Pausar Cronômetro";
-                                        tick();
-                                    }} else {{
-                                        timerStarted = true;
-                                    }}
+                                    if (!paused) {{ timerStarted = true; btnPause.textContent = "⏸️ Pausar Cronômetro"; tick(); }} 
+                                    else {{ timerStarted = true; }}
                                 }};
                                 window.speechSynthesis.speak(msg);
                             }} else {{
-                                timerStarted = true;
-                                btnPause.textContent = "⏸️ Pausar Cronômetro";
-                                tick();
+                                timerStarted = true; btnPause.textContent = "⏸️ Pausar Cronômetro"; tick();
                             }}
                         }};
 
@@ -331,20 +342,11 @@ with tab_jogo:
                         btnPause.onclick = function() {{
                             paused = !paused;
                             if (paused) {{
-                                if (!timerStarted && vozAtiva) {{
-                                    window.speechSynthesis.pause();
-                                    this.textContent = "▶️ Continuar Narração";
-                                }} else {{
-                                    this.textContent = "▶️ Continuar Cronômetro";
-                                }}
+                                if (!timerStarted && vozAtiva) {{ window.speechSynthesis.pause(); this.textContent = "▶️ Continuar Narração"; }} 
+                                else {{ this.textContent = "▶️ Continuar Cronômetro"; }}
                             }} else {{
-                                if (!timerStarted && vozAtiva) {{
-                                    window.speechSynthesis.resume();
-                                    this.textContent = "⏸️ Pausar Narração";
-                                }} else {{
-                                    this.textContent = "⏸️ Pausar Cronômetro";
-                                    tick();
-                                }}
+                                if (!timerStarted && vozAtiva) {{ window.speechSynthesis.resume(); this.textContent = "⏸️ Pausar Narração"; }} 
+                                else {{ this.textContent = "⏸️ Pausar Cronômetro"; tick(); }}
                             }}
                         }};
                     </script>
@@ -359,63 +361,83 @@ with tab_jogo:
                 st.markdown(f"<div class='next-area-info'>🎯 PRÓXIMA MATÉRIA: {area_seguinte}</div>", unsafe_allow_html=True)
                 nav_c1, nav_c2 = st.columns(2)
                 with nav_c1:
-                    st.button("⏭️ Próxima Pergunta", use_container_width=True, type="primary", 
-                              on_click=sortear_pergunta_ciclica, args=(df_filtrado, areas_selecionadas))
+                    st.button("⏭️ Próxima Pergunta", use_container_width=True, type="primary", on_click=sortear_pergunta_ciclica, args=(df_filtrado, areas_selecionadas))
                 with nav_c2:
                     st.button("⏹️ Encerrar Sessão", use_container_width=True, on_click=finalizar_sessao_callback)
 
     else:
         st.info("👈 Selecione áreas na barra lateral para começar.")
 
-# --- ABAS DE ESTATÍSTICAS ---
+# --- ABA SESSÃO ATUAL ---
 with tab_sessao:
     st.header(f"📊 Sessão #{st.session_state.numero_sessao}")
     if st.session_state.estatisticas:
         df_s = pd.DataFrame.from_dict(st.session_state.estatisticas, orient='index')
         df_s['Taxa de Acerto (%)'] = (df_s['Acertos'] / df_s['Tentativas'] * 100).round(1)
-        t_tent = df_s['Tentativas'].sum()
-        t_acer = df_s['Acertos'].sum()
+        t_tent, t_acer = df_s['Tentativas'].sum(), df_s['Acertos'].sum()
         t_taxa = round((t_acer / t_tent * 100), 1) if t_tent > 0 else 0
         m1, m2, m3 = st.columns(3)
-        m1.metric("Respondidas", t_tent)
-        m2.metric("Acertos", t_acer)
-        m3.metric("Taxa", f"{t_taxa}%")
+        m1.metric("Respondidas", t_tent); m2.metric("Acertos", t_acer); m3.metric("Taxa", f"{t_taxa}%")
         st.dataframe(df_s.sort_values(by='Taxa de Acerto (%)'), use_container_width=True)
+        
         if st.session_state.historico_erros:
-            st.subheader(f"📚 Erros da Sessão")
-            df_err = pd.DataFrame(st.session_state.historico_erros)
-            st.dataframe(df_err, use_container_width=True)
-            csv = df_err.to_csv(index=False).encode('utf-8')
+            st.subheader("📚 Revisão de Erros")
+            st.write("Clique no 🔊 para ouvir a pergunta novamente.")
+            for idx, err in enumerate(st.session_state.historico_erros):
+                with st.expander(f"❌ {err['Área']} - {err['Hora']}"):
+                    col_text, col_voice = st.columns([5, 1])
+                    with col_text:
+                        st.write(f"**Q:** {err['Pergunta']}")
+                        st.write(f"**A:** {err['Resposta']}")
+                    with col_voice:
+                        if st.button("🔊 Narrar", key=f"btn_voice_sess_{idx}"):
+                            st.session_state.texto_para_narrar = err['Pergunta']
+                            st.rerun()
+            
+            csv = pd.DataFrame(st.session_state.historico_erros).to_csv(index=False).encode('utf-8')
             st.download_button("📥 Baixar Erros da Sessão (.CSV)", data=csv, file_name=f"erros_Sessao_{st.session_state.numero_sessao}_{st.session_state.usuario_atual}.csv", mime="text/csv")
     else:
         st.info("Nenhuma pergunta respondida nesta sessão.")
 
+# --- ABA HISTÓRICO TOTAL ---
 with tab_hist:
     st.header("🏆 Histórico Acumulado")
     dados_db = get_dados_usuario(st.session_state.usuario_atual)
-    h_total = dados_db.get('historico_total', {})
-    h_sessoes = dados_db.get('sessoes', [])
+    h_total, h_sessoes = dados_db.get('historico_total', {}), dados_db.get('sessoes', [])
+    
     if h_total:
         df_h = pd.DataFrame.from_dict(h_total, orient='index')
         df_h['Taxa de Acerto (%)'] = (df_h['Acertos'] / df_h['Tentativas'] * 100).round(1)
-        th_tent = df_h['Tentativas'].sum()
-        th_acer = df_h['Acertos'].sum()
+        th_tent, th_acer = df_h['Tentativas'].sum(), df_h['Acertos'].sum()
         th_taxa = round((th_acer / th_tent * 100), 1) if th_tent > 0 else 0
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total Geral", th_tent)
-        c2.metric("Acertos Totais", th_acer)
-        c3.metric("Taxa Global", f"{th_taxa}%")
+        c1.metric("Total Geral", th_tent); c2.metric("Acertos Totais", th_acer); c3.metric("Taxa Global", f"{th_taxa}%")
         st.dataframe(df_h.sort_values(by='Taxa de Acerto (%)'), use_container_width=True)
+        
         if h_sessoes:
             st.subheader("📅 Log de Sessões")
             df_raw = pd.DataFrame(h_sessoes)
-            cols_desejadas = ['numero', 'data', 'questoes', 'acertos', 'taxa']
-            cols_validas = [c for c in cols_desejadas if c in df_raw.columns]
-            df_log = df_raw[cols_validas].rename(columns={'numero': 'Sessão', 'data': 'Data/Hora', 'questoes': 'Perguntas', 'acertos': 'Acertos', 'taxa': 'Taxa (%)'})
+            cols_v = [c for c in ['numero', 'data', 'questoes', 'acertos', 'taxa'] if c in df_raw.columns]
+            df_log = df_raw[cols_v].rename(columns={'numero': 'Sessão', 'data': 'Data/Hora', 'questoes': 'Perguntas', 'acertos': 'Acertos', 'taxa': 'Taxa (%)'})
             st.dataframe(df_log.sort_values(by=df_log.columns[0], ascending=False), use_container_width=True)
+
             todos_erros = dados_db.get('erros_total', [])
             if todos_erros:
-                csv_total = pd.DataFrame(todos_erros).to_csv(index=False).encode('utf-8')
-                st.download_button("📊 Baixar Todos os Erros (.CSV)", data=csv_total, file_name=f"historico_erros_geral_{st.session_state.usuario_atual}.csv", mime="text/csv")
+                st.subheader("📚 Banco de Erros Histórico")
+                st.write("Revise erros de sessões passadas clicando no 🔊.")
+                # Mostra os últimos 20 erros para não pesar a página
+                for idx, err in enumerate(reversed(todos_erros[-20:])):
+                    with st.expander(f"Sessão {err.get('Sessão', '?')} - {err['Área']}"):
+                        col_t, col_v = st.columns([5, 1])
+                        with col_t:
+                            st.write(f"**Q:** {err['Pergunta']}")
+                            st.write(f"**A:** {err['Resposta']}")
+                        with col_v:
+                            if st.button("🔊 Narrar", key=f"btn_voice_hist_{idx}"):
+                                st.session_state.texto_para_narrar = err['Pergunta']
+                                st.rerun()
+
+                csv_t = pd.DataFrame(todos_erros).to_csv(index=False).encode('utf-8')
+                st.download_button("📊 Baixar Todos os Erros (.CSV)", data=csv_t, file_name=f"historico_erros_geral_{st.session_state.usuario_atual}.csv", mime="text/csv")
     else:
         st.info("Sem dados no histórico ainda.")

@@ -94,7 +94,7 @@ def registrar_sessao(usuario, estatisticas_sessao, erros_sessao, session_id, num
         db[usuario] = dados
 
 # ==========================================
-# FUNÇÃO PARA RENDERIZAR TABELA HTML COM ÁUDIO
+# FUNÇÃO PARA RENDERIZAR TABELA HTML COM ÁUDIO E RESPOSTA OCULTA
 # ==========================================
 def render_tabela_erros_html(erros_list, height=420):
     if not erros_list:
@@ -108,7 +108,7 @@ def render_tabela_erros_html(erros_list, height=420):
         perg = str(err.get('Pergunta', '-'))
         resp = str(err.get('Resposta', '-'))
         
-        # Escapar caracteres para o JavaScript
+        # Escapar caracteres para o JavaScript da narração
         perg_js = perg.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'").replace('\n', ' ')
         
         rows += f"""
@@ -118,7 +118,9 @@ def render_tabela_erros_html(erros_list, height=420):
             <td>{hora}</td>
             <td>{area}</td>
             <td>{perg}</td>
-            <td>{resp}</td>
+            <td>
+                <span class="resp-blur" onclick="this.classList.toggle('revealed')" title="Clique para revelar a resposta">{resp}</span>
+            </td>
             <td style="text-align: center;">
                 <button class="btn-play" onclick="speak('{perg_js}')" title="Ouvir Pergunta">▶️</button>
             </td>
@@ -130,9 +132,29 @@ def render_tabela_erros_html(erros_list, height=420):
         body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; color: #333; }}
         .table-container {{ width: 100%; height: {height-20}px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; }}
         table {{ width: 100%; border-collapse: collapse; font-size: 14px; background-color: #fff; }}
-        th, td {{ padding: 12px 10px; text-align: left; border-bottom: 1px solid #f0f0f0; }}
+        th, td {{ padding: 12px 10px; text-align: left; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }}
         th {{ background-color: #f8f9fa; font-weight: 600; color: #2c3e50; position: sticky; top: 0; z-index: 1; border-bottom: 2px solid #e67e22; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1); }}
         tr:hover {{ background-color: #fafafa; }}
+        
+        /* Efeito de desfoque para a resposta */
+        .resp-blur {{
+            filter: blur(8px);
+            cursor: pointer;
+            transition: filter 0.3s ease;
+            user-select: none;
+            display: inline-block;
+            background-color: #fff8f0;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }}
+        .resp-blur:hover {{
+            filter: blur(4px); /* Fica levemente mais nítido ao passar o mouse */
+        }}
+        .resp-blur.revealed {{
+            filter: blur(0px); /* Revela completamente ao clicar */
+            background-color: transparent;
+        }}
+
         .btn-play {{ background-color: #e67e22; color: white; border: none; border-radius: 5px; padding: 6px 12px; cursor: pointer; font-size: 14px; transition: 0.2s; }}
         .btn-play:hover {{ background-color: #cf6d17; transform: scale(1.05); }}
     </style>

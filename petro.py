@@ -23,6 +23,7 @@ st.markdown("""
     .stApp { background-color: #ffffff; color: #111111; }
     [data-testid="stSidebar"] { background-color: #f5f5f5; }
     .area-tag { text-align: center; color: #e67e22; font-size: 22px; font-weight: bold; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px;}
+    .next-area-info { color: #7f8c8d; font-size: 14px; margin-bottom: 5px; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -163,18 +164,23 @@ def carregar_planilha(file):
     df.columns = df.columns.astype(str).str.strip()
     return df
 
-def sortear_pergunta_ciclica(df_f, areas_sel):
-    if df_f.empty: return
-    c_area, c_perg, c_resp = "Area", "Question", "Answer"
+def montar_fila_ciclica(areas_sel):
+    if not areas_sel: return [], set()
     normais = sorted([a for a in areas_sel if 'bonus' not in a.lower()])
     bonus   = [a for a in areas_sel if 'bonus' in a.lower()]
     fila = normais + (['⭐ BONUS'] if bonus else [])
+    return fila, set(bonus)
+
+def sortear_pergunta_ciclica(df_f, areas_sel):
+    if df_f.empty: return
+    c_area, c_perg, c_resp = "Area", "Question", "Answer"
+    fila, bonus_set = montar_fila_ciclica(areas_sel)
     
     idx = st.session_state.indice_area % len(fila)
     slot = fila[idx]
     st.session_state.indice_area += 1
     
-    df_slot = df_f[df_f[c_area].isin(bonus)] if slot == '⭐ BONUS' else df_f[df_f[c_area] == slot]
+    df_slot = df_f[df_f[c_area].isin(bonus_set)] if slot == '⭐ BONUS' else df_f[df_f[c_area] == slot]
     if not df_slot.empty:
         linha = df_slot.sample().iloc[0]
         st.session_state.pergunta_atual = {
@@ -185,7 +191,6 @@ def sortear_pergunta_ciclica(df_f, areas_sel):
 def processar_resposta(acertou):
     p = st.session_state.pergunta_atual
     if not p: return
-    
     area = p['area']
     if area not in st.session_state.estatisticas: st.session_state.estatisticas[area] = {'Tentativas': 0, 'Acertos': 0}
     st.session_state.estatisticas[area]['Tentativas'] += 1
@@ -194,13 +199,9 @@ def processar_resposta(acertou):
         st.session_state.historico_erros.append({
             "Sessão": st.session_state.numero_sessao,
             "Hora": datetime.now().strftime("%H:%M"), 
-            "Área": area, 
-            "Pergunta": p['pergunta'], 
-            "Resposta": p['resposta']
+            "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']
         })
-    
     atualizar_stats_usuario(st.session_state.usuario_atual, {area: {'Tentativas': 1, 'Acertos': 1 if acertou else 0}}, [] if acertou else [{"Sessão": st.session_state.numero_sessao, "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']}])
-    
     st.session_state.aguardando_navegacao = True
 
 def finalizar_sessao_callback():
@@ -230,7 +231,12 @@ tab_jogo, tab_sessao, tab_hist = st.tabs(["🎮 Arena de Simulação", "📊 Ses
 
 with tab_jogo:
     if not df_filtrado.empty:
+        fila, _ = montar_fila_ciclica(areas_selecionadas)
+        idx_prox = st.session_state.indice_area % len(fila) if fila else 0
+        area_seguinte = fila[idx_prox] if fila else "---"
+
         if not st.session_state.pergunta_atual and not st.session_state.aguardando_navegacao:
+            st.markdown(f"<div class='next-area-info'>🎯 PRÓXIMA MATÉRIA: {area_seguinte}</div>", unsafe_allow_html=True)
             if st.button("🚀 Iniciar Treino / Sortear Pergunta", type="primary"):
                 sortear_pergunta_ciclica(df_filtrado, areas_selecionadas)
                 st.rerun()
@@ -300,15 +306,14 @@ with tab_jogo:
                                 window.speechSynthesis.cancel();
                                 var msg = new SpeechSynthesisUtterance(perguntaTxt);
                                 msg.lang = 'en-US';
+                                msg.rate = 0.85; // VELOCIDADE REDUZIDA
                                 msg.onstart = () => {{ display.textContent = "📢 Lendo..."; }};
                                 msg.onend = () => {{ 
-                                    // Só inicia o tempo se não estiver pausado manualmente durante a leitura
                                     if (!paused) {{
                                         timerStarted = true;
                                         btnPause.textContent = "⏸️ Pausar Cronômetro";
                                         tick();
                                     }} else {{
-                                        // Se estava pausado na leitura, marca que ao despausar deve iniciar o timer
                                         timerStarted = true;
                                     }}
                                 }};
@@ -325,9 +330,7 @@ with tab_jogo:
                         
                         btnPause.onclick = function() {{
                             paused = !paused;
-                            
                             if (paused) {{
-                                // Lógica de PAUSAR
                                 if (!timerStarted && vozAtiva) {{
                                     window.speechSynthesis.pause();
                                     this.textContent = "▶️ Continuar Narração";
@@ -335,7 +338,6 @@ with tab_jogo:
                                     this.textContent = "▶️ Continuar Cronômetro";
                                 }}
                             }} else {{
-                                // Lógica de CONTINUAR
                                 if (!timerStarted && vozAtiva) {{
                                     window.speechSynthesis.resume();
                                     this.textContent = "⏸️ Pausar Narração";
@@ -354,6 +356,7 @@ with tab_jogo:
             
             else:
                 st.info("Resultado registrado! Como deseja prosseguir?")
+                st.markdown(f"<div class='next-area-info'>🎯 PRÓXIMA MATÉRIA: {area_seguinte}</div>", unsafe_allow_html=True)
                 nav_c1, nav_c2 = st.columns(2)
                 with nav_c1:
                     st.button("⏭️ Próxima Pergunta", use_container_width=True, type="primary", 
@@ -364,7 +367,7 @@ with tab_jogo:
     else:
         st.info("👈 Selecione áreas na barra lateral para começar.")
 
-# --- ESTATÍSTICAS ---
+# --- ABAS DE ESTATÍSTICAS ---
 with tab_sessao:
     st.header(f"📊 Sessão #{st.session_state.numero_sessao}")
     if st.session_state.estatisticas:

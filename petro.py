@@ -104,7 +104,7 @@ defaults = {
     'fila_areas': [],
     'indice_area': 0,
     'session_id': None,
-    'aguardando_navegacao': False, # NOVO: controla se exibe botões de próxima/encerrar
+    'aguardando_navegacao': False,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -201,7 +201,6 @@ def processar_resposta(acertou):
     
     atualizar_stats_usuario(st.session_state.usuario_atual, {area: {'Tentativas': 1, 'Acertos': 1 if acertou else 0}}, [] if acertou else [{"Sessão": st.session_state.numero_sessao, "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']}])
     
-    # Em vez de sortear, apenas muda o estado para exibir os botões de navegação
     st.session_state.aguardando_navegacao = True
 
 def finalizar_sessao_callback():
@@ -225,13 +224,12 @@ if arquivo:
         df_filtrado = df[df["Area"].isin(areas_selecionadas)]
 
 # ==========================================
-# 8. INTERFACE DE TREINO (ARENA + ESTATÍSTICAS)
+# 8. INTERFACE DE TREINO
 # ==========================================
 tab_jogo, tab_sessao, tab_hist = st.tabs(["🎮 Arena de Simulação", "📊 Sessão Atual", "🏆 Histórico Total"])
 
 with tab_jogo:
     if not df_filtrado.empty:
-        # Só mostra o botão de sorteio se não houver pergunta ou se a navegação foi concluída
         if not st.session_state.pergunta_atual and not st.session_state.aguardando_navegacao:
             if st.button("🚀 Iniciar Treino / Sortear Pergunta", type="primary"):
                 sortear_pergunta_ciclica(df_filtrado, areas_selecionadas)
@@ -243,7 +241,6 @@ with tab_jogo:
 
             st.markdown(f"<div class='area-tag'>📍 ÁREA: {p['area']}</div>", unsafe_allow_html=True)
 
-            # Só exibe o cronômetro e revelação se NÃO estiver aguardando navegação
             if not st.session_state.aguardando_navegacao:
                 components.html(f"""
                     <style>
@@ -326,10 +323,8 @@ with tab_jogo:
                 c2.button("❌ Erramos", use_container_width=True, on_click=processar_resposta, args=(False,))
             
             else:
-                # INTERFACE PÓS-RESPOSTA: Próxima ou Encerrar
+                # PAINEL DE NAVEGAÇÃO LIMPO (Sem pergunta/resposta)
                 st.info("Resultado registrado! Como deseja prosseguir?")
-                st.success(f"Pergunta: {p['pergunta']}")
-                st.warning(f"Resposta Correta: {p['resposta']}")
                 
                 nav_c1, nav_c2 = st.columns(2)
                 with nav_c1:
@@ -341,77 +336,55 @@ with tab_jogo:
     else:
         st.info("👈 Selecione áreas na barra lateral para começar.")
 
-# --- ABA SESSÃO ATUAL ---
+# --- ABAS DE ESTATÍSTICAS ---
 with tab_sessao:
-    st.header(f"📊 Desempenho: Sessão #{st.session_state.numero_sessao}")
+    st.header(f"📊 Sessão #{st.session_state.numero_sessao}")
     if st.session_state.estatisticas:
         df_s = pd.DataFrame.from_dict(st.session_state.estatisticas, orient='index')
         df_s['Taxa de Acerto (%)'] = (df_s['Acertos'] / df_s['Tentativas'] * 100).round(1)
-        
         t_tent = df_s['Tentativas'].sum()
         t_acer = df_s['Acertos'].sum()
         t_taxa = round((t_acer / t_tent * 100), 1) if t_tent > 0 else 0
-
         m1, m2, m3 = st.columns(3)
         m1.metric("Respondidas", t_tent)
         m2.metric("Acertos", t_acer)
         m3.metric("Taxa", f"{t_taxa}%")
-
-        st.subheader("🔍 Por Área")
         st.dataframe(df_s.sort_values(by='Taxa de Acerto (%)'), use_container_width=True)
-
         if st.session_state.historico_erros:
-            st.subheader(f"📚 Erros da Sessão {st.session_state.numero_sessao}")
+            st.subheader(f"📚 Erros da Sessão")
             df_err = pd.DataFrame(st.session_state.historico_erros)
             st.dataframe(df_err, use_container_width=True)
-            
             csv = df_err.to_csv(index=False).encode('utf-8')
             st.download_button("📥 Baixar Erros da Sessão (.CSV)", data=csv, file_name=f"erros_Sessao_{st.session_state.numero_sessao}_{st.session_state.usuario_atual}.csv", mime="text/csv")
     else:
         st.info("Nenhuma pergunta respondida nesta sessão.")
 
-# --- ABA HISTÓRICO TOTAL ---
 with tab_hist:
     st.header("🏆 Histórico Acumulado")
     dados_db = get_dados_usuario(st.session_state.usuario_atual)
     h_total = dados_db.get('historico_total', {})
     h_sessoes = dados_db.get('sessoes', [])
-    
     if h_total:
         df_h = pd.DataFrame.from_dict(h_total, orient='index')
         df_h['Taxa de Acerto (%)'] = (df_h['Acertos'] / df_h['Tentativas'] * 100).round(1)
-        
         th_tent = df_h['Tentativas'].sum()
         th_acer = df_h['Acertos'].sum()
         th_taxa = round((th_acer / th_tent * 100), 1) if th_tent > 0 else 0
-
         c1, c2, c3 = st.columns(3)
         c1.metric("Total Geral", th_tent)
         c2.metric("Acertos Totais", th_acer)
         c3.metric("Taxa Global", f"{th_taxa}%")
-
-        st.subheader("📈 Performance por Área (Acumulado)")
         st.dataframe(df_h.sort_values(by='Taxa de Acerto (%)'), use_container_width=True)
-
         if h_sessoes:
             st.subheader("📅 Log de Sessões")
             df_raw = pd.DataFrame(h_sessoes)
             cols_desejadas = ['numero', 'data', 'questoes', 'acertos', 'taxa']
             cols_validas = [c for c in cols_desejadas if c in df_raw.columns]
-            
-            df_log = df_raw[cols_validas].rename(columns={
-                'numero': 'Sessão', 'data': 'Data/Hora', 
-                'questoes': 'Perguntas', 'acertos': 'Acertos', 'taxa': 'Taxa (%)'
-            })
+            df_log = df_raw[cols_validas].rename(columns={'numero': 'Sessão', 'data': 'Data/Hora', 'questoes': 'Perguntas', 'acertos': 'Acertos', 'taxa': 'Taxa (%)'})
             st.dataframe(df_log.sort_values(by=df_log.columns[0], ascending=False), use_container_width=True)
-
             todos_erros = dados_db.get('erros_total', [])
             if todos_erros:
                 csv_total = pd.DataFrame(todos_erros).to_csv(index=False).encode('utf-8')
-                st.download_button("📊 Baixar Todos os Erros Registrados (.CSV)", data=csv_total, file_name=f"historico_erros_geral_{st.session_state.usuario_atual}.csv", mime="text/csv")
-        
-        fracas = df_h[df_h['Taxa de Acerto (%)'] < 50].index.tolist()
-        if fracas:
-            st.warning(f"⚠️ **Atenção:** Desempenho abaixo de 50% em: {', '.join(fracas)}. Reforçar estudos nestas áreas!")
+                st.download_button("📊 Baixar Todos os Erros (.CSV)", data=csv_total, file_name=f"historico_erros_geral_{st.session_state.usuario_atual}.csv", mime="text/csv")
     else:
         st.info("Sem dados no histórico ainda.")

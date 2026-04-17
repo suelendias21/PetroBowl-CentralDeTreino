@@ -104,6 +104,7 @@ defaults = {
     'fila_areas': [],
     'indice_area': 0,
     'session_id': None,
+    'aguardando_navegacao': False, # NOVO: controla se exibe botões de próxima/encerrar
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -179,8 +180,9 @@ def sortear_pergunta_ciclica(df_f, areas_sel):
         st.session_state.pergunta_atual = {
             "area": linha[c_area], "pergunta": linha[c_perg], "resposta": linha[c_resp], "uid": str(uuid.uuid4())
         }
+        st.session_state.aguardando_navegacao = False
 
-def processar_resposta(acertou, df_f, areas_sel):
+def processar_resposta(acertou):
     p = st.session_state.pergunta_atual
     if not p: return
     
@@ -198,7 +200,14 @@ def processar_resposta(acertou, df_f, areas_sel):
         })
     
     atualizar_stats_usuario(st.session_state.usuario_atual, {area: {'Tentativas': 1, 'Acertos': 1 if acertou else 0}}, [] if acertou else [{"Sessão": st.session_state.numero_sessao, "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']}])
-    sortear_pergunta_ciclica(df_f, areas_sel)
+    
+    # Em vez de sortear, apenas muda o estado para exibir os botões de navegação
+    st.session_state.aguardando_navegacao = True
+
+def finalizar_sessao_callback():
+    registrar_sessao(st.session_state.usuario_atual, st.session_state.estatisticas, st.session_state.historico_erros, st.session_state.session_id, st.session_state.numero_sessao)
+    st.session_state.logado = False
+    st.rerun()
 
 # ==========================================
 # 7. BARRA LATERAL
@@ -222,8 +231,11 @@ tab_jogo, tab_sessao, tab_hist = st.tabs(["🎮 Arena de Simulação", "📊 Ses
 
 with tab_jogo:
     if not df_filtrado.empty:
-        if st.button("🚀 Sortear Nova Pergunta", type="primary"):
-            sortear_pergunta_ciclica(df_filtrado, areas_selecionadas)
+        # Só mostra o botão de sorteio se não houver pergunta ou se a navegação foi concluída
+        if not st.session_state.pergunta_atual and not st.session_state.aguardando_navegacao:
+            if st.button("🚀 Iniciar Treino / Sortear Pergunta", type="primary"):
+                sortear_pergunta_ciclica(df_filtrado, areas_selecionadas)
+                st.rerun()
         
         if st.session_state.pergunta_atual:
             p = st.session_state.pergunta_atual
@@ -231,85 +243,101 @@ with tab_jogo:
 
             st.markdown(f"<div class='area-tag'>📍 ÁREA: {p['area']}</div>", unsafe_allow_html=True)
 
-            components.html(f"""
-                <style>
-                    * {{ box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }}
-                    body {{ background: white; text-align: center; overflow: hidden; }}
-                    #timer-display {{ font-size: 50px; font-weight: bold; color: #7f8c8d; margin: 10px 0; }}
-                    #timer-bar-wrap {{ width: 100%; background: #eee; height: 12px; border-radius: 10px; overflow: hidden; margin-bottom: 20px; }}
-                    #timer-bar {{ height: 100%; width: 100%; background: #bdc3c7; transition: width 1s linear; }}
-                    .box {{ background: #f9f9f9; border: 2px solid #e67e22; border-radius: 12px; padding: 20px; margin: 10px 0; display: none; font-size: 22px; color: #2c3e50; font-weight: 500; }}
-                    .btn-action {{ background: #e67e22; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; margin: 5px; width: 45%; }}
-                    #btn-pause {{ width: 92%; background: #95a5a6; }}
-                </style>
+            # Só exibe o cronômetro e revelação se NÃO estiver aguardando navegação
+            if not st.session_state.aguardando_navegacao:
+                components.html(f"""
+                    <style>
+                        * {{ box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }}
+                        body {{ background: white; text-align: center; overflow: hidden; }}
+                        #timer-display {{ font-size: 50px; font-weight: bold; color: #7f8c8d; margin: 10px 0; }}
+                        #timer-bar-wrap {{ width: 100%; background: #eee; height: 12px; border-radius: 10px; overflow: hidden; margin-bottom: 20px; }}
+                        #timer-bar {{ height: 100%; width: 100%; background: #bdc3c7; transition: width 1s linear; }}
+                        .box {{ background: #f9f9f9; border: 2px solid #e67e22; border-radius: 12px; padding: 20px; margin: 10px 0; display: none; font-size: 22px; color: #2c3e50; font-weight: 500; }}
+                        .btn-action {{ background: #e67e22; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; margin: 5px; width: 45%; }}
+                        #btn-pause {{ width: 92%; background: #95a5a6; }}
+                    </style>
 
-                <div id="timer-display">⏱️ Preparando...</div>
-                <div id="timer-bar-wrap"><div id="timer-bar"></div></div>
+                    <div id="timer-display">⏱️ Preparando...</div>
+                    <div id="timer-bar-wrap"><div id="timer-bar"></div></div>
 
-                <button class="btn-action" id="btn-reveal-q">👁️ Revelar Pergunta</button>
-                <button class="btn-action" id="btn-reveal-a">👁️ Revelar Resposta</button>
+                    <button class="btn-action" id="btn-reveal-q">👁️ Revelar Pergunta</button>
+                    <button class="btn-action" id="btn-reveal-a">👁️ Revelar Resposta</button>
+                    
+                    <div class="box" id="q-box">{p['pergunta']}</div>
+                    <div class="box" id="a-box">{p['resposta']}</div>
+
+                    <button class="btn-action" id="btn-pause">⏸️ Pausar Cronômetro</button>
+
+                    <script>
+                        var TOTAL = 15;
+                        var remaining = TOTAL;
+                        var paused = false;
+                        var timerStarted = false;
+                        var vozAtiva = {str(voz_ativa).lower()};
+                        var perguntaTxt = "{pergunta_js}";
+
+                        var display = document.getElementById('timer-display');
+                        var bar = document.getElementById('timer-bar');
+                        var qBox = document.getElementById('q-box');
+                        var aBox = document.getElementById('a-box');
+
+                        function tick() {{
+                            if (paused || !timerStarted) return;
+                            if (remaining <= 0) {{
+                                display.textContent = "⏱️ FIM!";
+                                bar.style.width = "0%";
+                                aBox.style.display = "block";
+                                return;
+                            }}
+                            display.textContent = "⏱️ " + remaining + "s";
+                            display.style.color = remaining <= 5 ? "#e74c3c" : "#27ae60";
+                            bar.style.width = (remaining / TOTAL * 100) + "%";
+                            bar.style.background = remaining <= 5 ? "#e74c3c" : "#27ae60";
+                            remaining--;
+                            setTimeout(tick, 1000);
+                        }}
+
+                        window.onload = function() {{
+                            if (vozAtiva) {{
+                                window.speechSynthesis.cancel();
+                                var msg = new SpeechSynthesisUtterance(perguntaTxt);
+                                msg.lang = 'en-US';
+                                msg.onstart = () => {{ display.textContent = "📢 Lendo..."; }};
+                                msg.onend = () => {{ timerStarted = true; tick(); }};
+                                window.speechSynthesis.speak(msg);
+                            }} else {{
+                                timerStarted = true;
+                                tick();
+                            }}
+                        }};
+
+                        document.getElementById('btn-reveal-q').onclick = () => {{ qBox.style.display = "block"; }};
+                        document.getElementById('btn-reveal-a').onclick = () => {{ aBox.style.display = "block"; }};
+                        document.getElementById('btn-pause').onclick = function() {{
+                            paused = !paused;
+                            this.textContent = paused ? "▶️ Continuar" : "⏸️ Pausar Cronômetro";
+                            if (!paused) tick();
+                        }};
+                    </script>
+                """, height=400)
+
+                c1, c2 = st.columns(2)
+                c1.button("✅ Acertamos!", use_container_width=True, on_click=processar_resposta, args=(True,))
+                c2.button("❌ Erramos", use_container_width=True, on_click=processar_resposta, args=(False,))
+            
+            else:
+                # INTERFACE PÓS-RESPOSTA: Próxima ou Encerrar
+                st.info("Resultado registrado! Como deseja prosseguir?")
+                st.success(f"Pergunta: {p['pergunta']}")
+                st.warning(f"Resposta Correta: {p['resposta']}")
                 
-                <div class="box" id="q-box">{p['pergunta']}</div>
-                <div class="box" id="a-box">{p['resposta']}</div>
+                nav_c1, nav_c2 = st.columns(2)
+                with nav_c1:
+                    st.button("⏭️ Próxima Pergunta", use_container_width=True, type="primary", 
+                              on_click=sortear_pergunta_ciclica, args=(df_filtrado, areas_selecionadas))
+                with nav_c2:
+                    st.button("⏹️ Encerrar Sessão", use_container_width=True, on_click=finalizar_sessao_callback)
 
-                <button class="btn-action" id="btn-pause">⏸️ Pausar Cronômetro</button>
-
-                <script>
-                    var TOTAL = 15;
-                    var remaining = TOTAL;
-                    var paused = false;
-                    var timerStarted = false;
-                    var vozAtiva = {str(voz_ativa).lower()};
-                    var perguntaTxt = "{pergunta_js}";
-
-                    var display = document.getElementById('timer-display');
-                    var bar = document.getElementById('timer-bar');
-                    var qBox = document.getElementById('q-box');
-                    var aBox = document.getElementById('a-box');
-
-                    function tick() {{
-                        if (paused || !timerStarted) return;
-                        if (remaining <= 0) {{
-                            display.textContent = "⏱️ FIM!";
-                            bar.style.width = "0%";
-                            aBox.style.display = "block";
-                            return;
-                        }}
-                        display.textContent = "⏱️ " + remaining + "s";
-                        display.style.color = remaining <= 5 ? "#e74c3c" : "#27ae60";
-                        bar.style.width = (remaining / TOTAL * 100) + "%";
-                        bar.style.background = remaining <= 5 ? "#e74c3c" : "#27ae60";
-                        remaining--;
-                        setTimeout(tick, 1000);
-                    }}
-
-                    window.onload = function() {{
-                        if (vozAtiva) {{
-                            window.speechSynthesis.cancel();
-                            var msg = new SpeechSynthesisUtterance(perguntaTxt);
-                            msg.lang = 'en-US';
-                            msg.onstart = () => {{ display.textContent = "📢 Lendo..."; }};
-                            msg.onend = () => {{ timerStarted = true; tick(); }};
-                            window.speechSynthesis.speak(msg);
-                        }} else {{
-                            timerStarted = true;
-                            tick();
-                        }}
-                    }};
-
-                    document.getElementById('btn-reveal-q').onclick = () => {{ qBox.style.display = "block"; }};
-                    document.getElementById('btn-reveal-a').onclick = () => {{ aBox.style.display = "block"; }};
-                    document.getElementById('btn-pause').onclick = function() {{
-                        paused = !paused;
-                        this.textContent = paused ? "▶️ Continuar" : "⏸️ Pausar Cronômetro";
-                        if (!paused) tick();
-                    }};
-                </script>
-            """, height=400)
-
-            c1, c2 = st.columns(2)
-            c1.button("✅ Acertamos!", use_container_width=True, on_click=processar_resposta, args=(True, df_filtrado, areas_selecionadas))
-            c2.button("❌ Erramos", use_container_width=True, on_click=processar_resposta, args=(False, df_filtrado, areas_selecionadas))
     else:
         st.info("👈 Selecione áreas na barra lateral para começar.")
 
@@ -338,12 +366,7 @@ with tab_sessao:
             st.dataframe(df_err, use_container_width=True)
             
             csv = df_err.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                "📥 Baixar Erros da Sessão (.CSV)", 
-                data=csv, 
-                file_name=f"erros_Sessao_{st.session_state.numero_sessao}_{st.session_state.usuario_atual}.csv", 
-                mime="text/csv"
-            )
+            st.download_button("📥 Baixar Erros da Sessão (.CSV)", data=csv, file_name=f"erros_Sessao_{st.session_state.numero_sessao}_{st.session_state.usuario_atual}.csv", mime="text/csv")
     else:
         st.info("Nenhuma pergunta respondida nesta sessão.")
 
@@ -370,7 +393,6 @@ with tab_hist:
         st.subheader("📈 Performance por Área (Acumulado)")
         st.dataframe(df_h.sort_values(by='Taxa de Acerto (%)'), use_container_width=True)
 
-        # Histórico de Sessões com tratamento para KeyError
         if h_sessoes:
             st.subheader("📅 Log de Sessões")
             df_raw = pd.DataFrame(h_sessoes)
@@ -386,12 +408,7 @@ with tab_hist:
             todos_erros = dados_db.get('erros_total', [])
             if todos_erros:
                 csv_total = pd.DataFrame(todos_erros).to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    "📊 Baixar Todos os Erros Registrados (.CSV)", 
-                    data=csv_total, 
-                    file_name=f"historico_erros_geral_{st.session_state.usuario_atual}.csv", 
-                    mime="text/csv"
-                )
+                st.download_button("📊 Baixar Todos os Erros Registrados (.CSV)", data=csv_total, file_name=f"historico_erros_geral_{st.session_state.usuario_atual}.csv", mime="text/csv")
         
         fracas = df_h[df_h['Taxa de Acerto (%)'] < 50].index.tolist()
         if fracas:

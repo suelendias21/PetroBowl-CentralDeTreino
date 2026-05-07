@@ -1,8 +1,6 @@
 import sys
 import warnings
 import uuid
-import hashlib
-import shelve
 from datetime import datetime
 import streamlit as st
 import streamlit.components.v1 as components
@@ -15,7 +13,7 @@ warnings.filterwarnings("ignore")
 # ==========================================
 # 1. CONFIGURAÇÕES E ESTILOS GERAIS
 # ==========================================
-st.set_page_config(page_title="PetroBowl Intelligence", page_icon="🧠", layout="wide")
+st.set_page_config(page_title="PetroBowl Intelligence - Amistoso", page_icon="🏆", layout="wide")
 
 st.markdown("""
     <style>
@@ -29,79 +27,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. SISTEMA DE USUÁRIOS
-# ==========================================
-DB_PATH = "petrobowl_users"
-
-def hash_senha(senha):
-    return hashlib.sha256(senha.encode()).hexdigest()
-
-def usuario_existe(usuario):
-    with shelve.open(DB_PATH) as db:
-        return usuario in db
-
-def senha_correta(usuario, senha):
-    with shelve.open(DB_PATH) as db:
-        if usuario not in db: return False
-        return db[usuario]['senha'] == hash_senha(senha)
-
-def salvar_usuario(usuario, dados):
-    with shelve.open(DB_PATH) as db:
-        db[usuario] = dados
-
-def get_dados_usuario(usuario):
-    with shelve.open(DB_PATH) as db:
-        return dict(db.get(usuario, {}))
-
-def atualizar_stats_usuario(usuario, stats_delta, erros_novos):
-    with shelve.open(DB_PATH) as db:
-        dados = db.get(usuario, {'senha': '', 'historico_total': {}, 'erros_total': []})
-        hist = dados.get('historico_total', {})
-        for area, vals in stats_delta.items():
-            if area not in hist: hist[area] = {'Tentativas': 0, 'Acertos': 0}
-            hist[area]['Tentativas'] += vals.get('Tentativas', 0)
-            hist[area]['Acertos']    += vals.get('Acertos', 0)
-        dados['historico_total'] = hist
-        erros = dados.get('erros_total', [])
-        erros.extend(erros_novos)
-        dados['erros_total'] = erros[-500:] 
-        db[usuario] = dados
-
-def registrar_sessao(usuario, estatisticas_sessao, erros_sessao, session_id, num_sessao):
-    if not estatisticas_sessao: return
-    with shelve.open(DB_PATH) as db:
-        dados = db.get(usuario, {'senha': '', 'historico_total': {}, 'erros_total': [], 'sessoes': []})
-        sessoes = dados.get('sessoes', [])
-        total_tent  = sum(v['Tentativas'] for v in estatisticas_sessao.values())
-        total_acert = sum(v['Acertos']    for v in estatisticas_sessao.values())
-        registro = {
-            'session_id': session_id,
-            'numero': num_sessao,
-            'data': datetime.now().strftime('%d/%m/%Y %H:%M'),
-            'questoes': total_tent,
-            'acertos': total_acert,
-            'taxa': round((total_acert / total_tent * 100), 1) if total_tent > 0 else 0,
-            'por_area': dict(estatisticas_sessao),
-            'erros': list(erros_sessao)
-        }
-        for i, s in enumerate(sessoes):
-            if s.get('session_id') == session_id:
-                sessoes[i] = registro
-                break
-        else:
-            sessoes.append(registro)
-        dados['sessoes'] = sessoes[-100:]
-        db[usuario] = dados
-
-# ==========================================
-# FUNÇÃO PARA RENDERIZAR TABELA HTML COM ÁUDIO E RESPOSTA OCULTA
+# FUNÇÃO PARA RENDERIZAR TABELA HTML (SEM DB)
 # ==========================================
 def render_tabela_erros_html(erros_list, height=420):
     if not erros_list:
         return
     rows = ""
     for err in erros_list:
-        sess = err.get('Sessão', '?')
         num = err.get('Nº', '-')
         hora = err.get('Hora', '-')
         area = err.get('Área', '-')
@@ -112,7 +44,6 @@ def render_tabela_erros_html(erros_list, height=420):
         
         rows += f"""
         <tr>
-            <td>#{sess}</td>
             <td>{num}</td>
             <td>{hora}</td>
             <td>{area}</td>
@@ -157,12 +88,11 @@ def render_tabela_erros_html(erros_list, height=420):
         <table>
             <thead>
                 <tr>
-                    <th width="8%">Sess.</th>
                     <th width="8%">Nº</th>
                     <th width="10%">Hora</th>
                     <th width="15%">Área</th>
-                    <th width="35%">Pergunta</th>
-                    <th width="16%">Resposta</th>
+                    <th width="40%">Pergunta</th>
+                    <th width="19%">Resposta (Clique)</th>
                     <th width="8%" style="text-align: center;">Ouvir</th>
                 </tr>
             </thead>
@@ -184,19 +114,15 @@ def render_tabela_erros_html(erros_list, height=420):
     components.html(html_code, height=height)
 
 # ==========================================
-# 3. SESSION STATE INICIAL
+# 2. SESSION STATE INICIAL (STATELESS)
 # ==========================================
 defaults = {
-    'logado': False,
-    'usuario_atual': None,
-    'numero_sessao': 1,
     'contagem_perguntas_sessao': 0, 
     'pergunta_atual': None,
     'historico_erros': [],
     'estatisticas': {},
     'fila_areas': [],
     'indice_area': 0,
-    'session_id': None,
     'aguardando_navegacao': False
 }
 for k, v in defaults.items():
@@ -204,51 +130,17 @@ for k, v in defaults.items():
         st.session_state[k] = v
 
 # ==========================================
-# 4. LOGIN / CADASTRO
-# ==========================================
-if not st.session_state.logado:
-    st.markdown("<h1 style='text-align:center; color:#e67e22;'>🧠 PetroBowl Intelligence</h1>", unsafe_allow_html=True)
-    col_l, col_r = st.columns(2)
-    with col_l:
-        st.subheader("🔑 Login")
-        u = st.text_input("Usuário", key="l_u")
-        s = st.text_input("Senha", type="password", key="l_s")
-        if st.button("Entrar", use_container_width=True):
-            if usuario_existe(u) and senha_correta(u, s):
-                dados_db = get_dados_usuario(u)
-                st.session_state.logado = True
-                st.session_state.usuario_atual = u
-                st.session_state.numero_sessao = len(dados_db.get('sessoes', [])) + 1
-                st.session_state.session_id = str(uuid.uuid4())
-                st.rerun()
-            else:
-                st.error("Usuário ou senha incorretos.")
-    with col_r:
-        st.subheader("📝 Criar Conta")
-        nu = st.text_input("Novo usuário", key="n_u")
-        ns = st.text_input("Nova senha", type="password", key="n_s")
-        if st.button("Criar Conta", use_container_width=True):
-            if not nu or not ns:
-                st.error("Preencha todos os campos.")
-            elif not usuario_existe(nu):
-                salvar_usuario(nu, {'senha': hash_senha(ns), 'historico_total': {}, 'erros_total': []})
-                st.success("Conta criada com sucesso!")
-            else:
-                st.error("Este usuário já existe.")
-    st.stop()
-
-# ==========================================
-# 5. HEADER
+# 3. HEADER DA COMPETIÇÃO
 # ==========================================
 c_t, c_l = st.columns([5, 1])
-c_t.markdown(f"### 🧠 PetroBowl Intelligence | Sessão {st.session_state.numero_sessao} | <span style='color:#27ae60;'>👤 {st.session_state.usuario_atual}</span>", unsafe_allow_html=True)
-if c_l.button("🚪 Encerrar e Sair", use_container_width=True):
-    registrar_sessao(st.session_state.usuario_atual, st.session_state.estatisticas, st.session_state.historico_erros, st.session_state.session_id, st.session_state.numero_sessao)
-    st.session_state.logado = False
+c_t.markdown(f"### 🏆 PetroBowl Intelligence | Modo Competição Rápida", unsafe_allow_html=True)
+if c_l.button("🔄 Zerar Sessão", use_container_width=True):
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
     st.rerun()
 
 # ==========================================
-# 6. LÓGICA DO JOGO
+# 4. LÓGICA DO JOGO (SEM BANCO DE DADOS)
 # ==========================================
 @st.cache_data
 def carregar_planilha(file):
@@ -289,21 +181,15 @@ def processar_resposta(acertou):
     if acertou: st.session_state.estatisticas[area]['Acertos'] += 1
     else: 
         st.session_state.historico_erros.append({
-            "Sessão": st.session_state.numero_sessao,
             "Nº": p.get('num', '?'), "Hora": datetime.now().strftime("%H:%M"), 
             "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']
         })
-    atualizar_stats_usuario(st.session_state.usuario_atual, {area: {'Tentativas': 1, 'Acertos': 1 if acertou else 0}}, [] if acertou else [{"Sessão": st.session_state.numero_sessao, "Nº": p.get('num', '?'), "Área": area, "Pergunta": p['pergunta'], "Resposta": p['resposta']}])
     st.session_state.aguardando_navegacao = True
 
-def finalizar_sessao_callback():
-    registrar_sessao(st.session_state.usuario_atual, st.session_state.estatisticas, st.session_state.historico_erros, st.session_state.session_id, st.session_state.numero_sessao)
-    st.session_state.logado = False
-    st.rerun()
-
 # ==========================================
-# 7. BARRA LATERAL (CONFIGS)
+# 5. BARRA LATERAL (CONFIGS)
 # ==========================================
+st.sidebar.title("Configurações do Jogo")
 arquivo = st.sidebar.file_uploader("Carregue o Total Bank (.xlsx)", type=["xlsx"])
 voz_ativa = st.sidebar.checkbox("🔊 Narrar no Sorteio", value=True)
 df_filtrado = pd.DataFrame()
@@ -332,9 +218,9 @@ if arquivo:
         df_filtrado = df[df["Area"].isin(areas_selecionadas)]
 
 # ==========================================
-# 8. ABAS: ARENA / SESSÃO / HISTÓRICO
+# 6. ABAS: ARENA / SESSÃO ATUAL
 # ==========================================
-tab_jogo, tab_sessao, tab_hist = st.tabs(["🎮 Arena de Simulação", "📊 Sessão Atual", "🏆 Histórico Total"])
+tab_jogo, tab_sessao = st.tabs(["🎮 Arena de Simulação", "📊 Sessão Atual"])
 
 # --- ARENA ---
 with tab_jogo:
@@ -423,18 +309,13 @@ with tab_jogo:
             else:
                 st.info("Resultado registrado! Como deseja prosseguir?")
                 st.markdown(f"<div class='next-area-info'>🎯 PRÓXIMA MATÉRIA: {area_seguinte}</div>", unsafe_allow_html=True)
-                nav_c1, nav_c2 = st.columns(2)
-                with nav_c1:
-                    st.button("⏭️ Próxima Pergunta", use_container_width=True, type="primary", on_click=sortear_pergunta_ciclica, args=(df_filtrado, areas_selecionadas))
-                with nav_c2:
-                    st.button("⏹️ Encerrar Sessão", use_container_width=True, on_click=finalizar_sessao_callback)
+                st.button("⏭️ Próxima Pergunta", use_container_width=True, type="primary", on_click=sortear_pergunta_ciclica, args=(df_filtrado, areas_selecionadas))
     else:
-        # Aviso restaurado aqui na aba principal!
         st.info("👈 Selecione pelo menos uma área na barra lateral para começar.")
 
 # --- SESSÃO ATUAL ---
 with tab_sessao:
-    st.header(f"📊 Desempenho da Sessão #{st.session_state.numero_sessao}")
+    st.header(f"📊 Desempenho do Amistoso")
     if st.session_state.estatisticas:
         df_s = pd.DataFrame.from_dict(st.session_state.estatisticas, orient='index')
         df_s['Taxa (%)'] = (df_s['Acertos'] / df_s['Tentativas'] * 100).round(1)
@@ -448,29 +329,8 @@ with tab_sessao:
             st.subheader("📚 Revisão de Erros da Sessão")
             render_tabela_erros_html(st.session_state.historico_erros, height=450)
             
+            # Botão de salvar a sessão
             csv = pd.DataFrame(st.session_state.historico_erros).to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Baixar Erros (.CSV)", data=csv, file_name=f"erros_Sessao_{st.session_state.numero_sessao}.csv", mime="text/csv")
+            st.download_button("📥 Baixar Planilha de Erros (.CSV) para Revisão", data=csv, file_name=f"erros_amistoso_{datetime.now().strftime('%d_%m')}.csv", mime="text/csv")
     else:
         st.info("Nenhuma pergunta respondida ainda.")
-
-# --- HISTÓRICO TOTAL ---
-with tab_hist:
-    st.header("🏆 Histórico Acumulado")
-    dados_db = get_dados_usuario(st.session_state.usuario_atual)
-    h_total = dados_db.get('historico_total', {})
-    
-    if h_total:
-        df_h = pd.DataFrame.from_dict(h_total, orient='index')
-        df_h['Taxa (%)'] = (df_h['Acertos'] / df_h['Tentativas'] * 100).round(1)
-        st.dataframe(df_h, use_container_width=True)
-        
-        todos_erros = dados_db.get('erros_total', [])
-        if todos_erros:
-            st.subheader("📚 Banco de Erros Histórico")
-            erros_recentes = list(reversed(todos_erros[-40:]))
-            render_tabela_erros_html(erros_recentes, height=500)
-
-            csv_t = pd.DataFrame(todos_erros).to_csv(index=False).encode('utf-8')
-            st.download_button("📊 Baixar Todos os Erros (.CSV)", data=csv_t, file_name=f"historico_erros_total.csv", mime="text/csv")
-    else:
-        st.info("Sem dados no histórico ainda.")

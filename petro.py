@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore")
 # ==========================================
 # 1. CONFIGURAÇÕES E ESTILOS GERAIS
 # ==========================================
-st.set_page_config(page_title="PetroBowl Intelligence - Amistoso", page_icon="🏆", layout="wide")
+st.set_page_config(page_title="PetroBowl Intelligence", page_icon="🏆", layout="wide")
 
 st.markdown("""
     <style>
